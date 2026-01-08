@@ -253,10 +253,22 @@ export const WorkflowRuns: React.FC = () => {
                       const StatusIcon = status.icon;
                       const TriggerIcon = trigger.icon;
                       
-                      return (
+                        // Calculate duration
+                        const getDuration = () => {
+                          if (!run.started_at) return null;
+                          const start = new Date(run.started_at);
+                          const end = run.completed_at ? new Date(run.completed_at) : new Date();
+                          const durationMs = end.getTime() - start.getTime();
+                          if (durationMs < 1000) return `${durationMs}ms`;
+                          if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)}s`;
+                          return `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`;
+                        };
+                        const duration = getDuration();
+
+                        return (
                         <div 
                           key={run.id}
-                          className="flex items-center justify-between p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors cursor-pointer"
+                          className="flex items-center justify-between p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors cursor-pointer group"
                           onClick={() => navigate(`/workflow-monitor/${run.id}`)}
                         >
                           <div className="flex items-center gap-4">
@@ -270,6 +282,15 @@ export const WorkflowRuns: React.FC = () => {
                                 <span>{trigger.label}</span>
                                 <span>•</span>
                                 <span>{formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}</span>
+                                {duration && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {duration}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -280,13 +301,14 @@ export const WorkflowRuns: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigate(`/workflow-monitor/${run.id}`);
                               }}
                             >
                               <Eye className="h-4 w-4 mr-1" />
-                              Monitor
+                              Details
                             </Button>
                             {run.error_message && (
                               <span className="text-xs text-red-500 max-w-[200px] truncate">
