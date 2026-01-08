@@ -28,13 +28,54 @@ interface GeneratedAgent {
   persona: string;
   intro_sentence: string;
   core_model: 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
+  input_config?: {
+    accepts_user_input: boolean;
+    accepts_from_agents: string[];
+    input_prompt_template?: string;
+    required_context?: string[];
+  };
+  output_config?: {
+    output_format: 'structured' | 'freeform' | 'json' | 'markdown';
+    output_schema?: string;
+    passes_to_agents: string[];
+    saves_to_knowledge_base: boolean;
+  };
+  rag_policy?: {
+    knowledge_base_ratio: number;
+    web_verification_ratio: number;
+    creativity_level: 'none' | 'very_low' | 'low' | 'medium' | 'high';
+    hallucination_tolerance: 'none' | 'very_low';
+  };
+  response_rules?: {
+    step_by_step: boolean;
+    cite_if_possible: boolean;
+    refuse_if_uncertain: boolean;
+  };
+}
+
+interface WorkflowConnection {
+  from: number;
+  to: number;
+  condition?: 'always' | 'on_success' | 'on_specific_output';
+  data_mapping?: string;
+}
+
+interface WorkflowSettings {
+  execution_mode?: 'sequential' | 'parallel_where_possible';
+  error_handling?: 'stop_on_error' | 'continue_on_error' | 'retry_once';
+  timeout_seconds?: number;
+  notifications?: {
+    on_complete: boolean;
+    on_error: boolean;
+  };
 }
 
 interface GeneratedWorkflow {
   name: string;
   description: string;
   agents: GeneratedAgent[];
-  connections: { from: number; to: number }[];
+  connections: WorkflowConnection[];
+  workflow_settings?: WorkflowSettings;
 }
 
 interface WorkflowResult {
@@ -187,12 +228,25 @@ export const WorkflowBuilder: React.FC = () => {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      // Create agents first
+      // Create agents first with enhanced configuration
       const createdAgentIds: string[] = [];
       for (const agent of generatedWorkflow.workflow.agents) {
+        const ragPolicy = agent.rag_policy || {
+          knowledge_base_ratio: 0.8,
+          web_verification_ratio: 0.2,
+          creativity_level: 'low',
+          hallucination_tolerance: 'very_low',
+        };
+        
+        const responseRules = agent.response_rules || {
+          step_by_step: true,
+          cite_if_possible: true,
+          refuse_if_uncertain: false,
+        };
+
         const { data: agentData, error: agentError } = await supabase
           .from('ai_profiles')
-          .insert({
+          .insert([{
             display_name: agent.display_name,
             role_description: agent.role_description,
             persona: agent.persona,
@@ -201,7 +255,9 @@ export const WorkflowBuilder: React.FC = () => {
             workspace_id: currentWorkspace.id,
             created_by: user.user.id,
             is_active: true,
-          })
+            rag_policy: ragPolicy,
+            response_rules: responseRules,
+          }])
           .select()
           .single();
 
@@ -258,22 +314,45 @@ export const WorkflowBuilder: React.FC = () => {
         },
       ];
 
-      // Create multi-agent config
+      // Create multi-agent config with enhanced settings
+      const workflowSettings = generatedWorkflow.workflow.workflow_settings || {
+        execution_mode: 'sequential',
+        error_handling: 'stop_on_error',
+        timeout_seconds: 300,
+      };
+
+      // Build enhanced agent nodes with input/output config
+      const enhancedAgentNodes = agentNodes.map((node, index) => {
+        const agent = generatedWorkflow.workflow.agents[index];
+        return {
+          nodeId: node.id,
+          agentId: createdAgentIds[index],
+          model: agent.core_model,
+          label: agent.display_name,
+          inputConfig: agent.input_config || { accepts_user_input: index === 0, accepts_from_agents: [] },
+          outputConfig: agent.output_config || { output_format: 'freeform', passes_to_agents: [], saves_to_knowledge_base: false },
+        };
+      });
+
+      // Create connections as plain JSON
+      const connectionsData = generatedWorkflow.workflow.connections.map(conn => ({
+        from: conn.from,
+        to: conn.to,
+        condition: conn.condition || 'always',
+        data_mapping: conn.data_mapping || 'pass_full_output',
+      }));
+
       const { data: configData, error: configError } = await supabase
         .from('multi_agent_configs')
-        .insert({
+        .insert([{
           name: generatedWorkflow.workflow.name,
           description: generatedWorkflow.workflow.description,
           workspace_id: currentWorkspace.id,
           created_by: user.user.id,
-          canvas_data: { nodes, edges },
-          agent_nodes: agentNodes.map((node, index) => ({
-            nodeId: node.id,
-            agentId: createdAgentIds[index],
-            model: generatedWorkflow.workflow.agents[index].core_model,
-          })),
-          connections: generatedWorkflow.workflow.connections,
-        })
+          canvas_data: JSON.parse(JSON.stringify({ nodes, edges, settings: workflowSettings })),
+          agent_nodes: JSON.parse(JSON.stringify(enhancedAgentNodes)),
+          connections: JSON.parse(JSON.stringify(connectionsData)),
+        }])
         .select()
         .single();
 
