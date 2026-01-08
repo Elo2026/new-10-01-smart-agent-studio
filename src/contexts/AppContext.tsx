@@ -37,11 +37,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   useEffect(() => {
     localStorage.setItem('rag_theme', theme);
+    const root = document.documentElement;
+    
+    // Add transition class for smooth theme change
+    root.style.setProperty('--theme-transition', 'background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease');
+    root.classList.add('theme-transitioning');
+    
     if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark');
     }
+    
+    // Remove transition class after animation completes
+    const timeout = setTimeout(() => {
+      root.classList.remove('theme-transitioning');
+    }, 300);
+    
+    return () => clearTimeout(timeout);
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');

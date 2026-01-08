@@ -85,7 +85,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           body: JSON.stringify({
             workflowId,
             workspaceId,
-            triggerType: 'chat',
+            triggerType: 'manual',
             inputData: { prompt: currentInput },
           }),
         }
