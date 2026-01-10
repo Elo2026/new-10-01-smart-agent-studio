@@ -90,12 +90,16 @@ Respond with valid JSON:
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        expansion.expanded = [query, ...(parsed.expanded_queries || [])];
-        expansion.hypothetical_answer = parsed.hypothetical_answer || null;
-        expansion.subqueries = parsed.subqueries || [];
-        expansion.intent = parsed.intent || "informational";
-        expansion.entities = parsed.entities || [];
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          expansion.expanded = [query, ...(parsed.expanded_queries || [])];
+          expansion.hypothetical_answer = parsed.hypothetical_answer || null;
+          expansion.subqueries = parsed.subqueries || [];
+          expansion.intent = parsed.intent || "informational";
+          expansion.entities = parsed.entities || [];
+        } catch (parseError) {
+          console.error("Query expansion JSON parse error:", parseError);
+        }
       }
     }
   } catch (error) {
@@ -381,23 +385,27 @@ Only include the top ${topN} most relevant passages.`
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        const rankings = parsed.rankings || [];
-        
-        const reranked: RetrievedChunk[] = [];
-        for (let i = 0; i < Math.min(rankings.length, topN); i++) {
-          const idx = rankings[i];
-          if (typeof idx === 'number' && idx >= 0 && idx < chunks.length) {
-            const chunk = chunks[idx];
-            reranked.push({
-              ...chunk,
-              relevance_score: chunk.relevance_score + (topN - i) * 0.1 // Boost by rank
-            });
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          const rankings = parsed.rankings || [];
+          
+          const reranked: RetrievedChunk[] = [];
+          for (let i = 0; i < Math.min(rankings.length, topN); i++) {
+            const idx = rankings[i];
+            if (typeof idx === 'number' && idx >= 0 && idx < chunks.length) {
+              const chunk = chunks[idx];
+              reranked.push({
+                ...chunk,
+                relevance_score: chunk.relevance_score + (topN - i) * 0.1 // Boost by rank
+              });
+            }
           }
-        }
-        
-        if (reranked.length > 0) {
-          return reranked;
+          
+          if (reranked.length > 0) {
+            return reranked;
+          }
+        } catch (parseError) {
+          console.error("Reranking JSON parse error:", parseError);
         }
       }
     }
@@ -458,12 +466,13 @@ Respond with JSON: {"follow_up_queries": ["query1", "query2"], "needs_more_info"
         const text = data.choices?.[0]?.message?.content || "";
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          
-          if (!parsed.needs_more_info) break;
-          
-          const followUpQueries = parsed.follow_up_queries || [];
-          if (followUpQueries.length === 0) break;
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            
+            if (!parsed.needs_more_info) break;
+            
+            const followUpQueries = parsed.follow_up_queries || [];
+            if (followUpQueries.length === 0) break;
 
           // Search for follow-up queries
           const followUpExpansion: QueryExpansion = {
@@ -488,6 +497,10 @@ Respond with JSON: {"follow_up_queries": ["query1", "query2"], "needs_more_info"
           
           allChunks = [...allChunks, ...uniqueNew];
           currentChunks = uniqueNew;
+          } catch (parseError) {
+            console.error("Multi-hop JSON parse error:", parseError);
+            break;
+          }
         }
       }
     } catch (error) {
@@ -505,6 +518,32 @@ serve(async (req) => {
   }
 
   try {
+    // Authentication check - require valid user session
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Create client with user's auth token to verify authentication
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { 
       query, 
       conversation_id,
@@ -520,9 +559,8 @@ serve(async (req) => {
 
     const startTime = Date.now();
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use service role for data access (after authentication verified)
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Default config
     const config: RetrievalConfig = {

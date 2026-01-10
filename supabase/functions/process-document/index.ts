@@ -80,14 +80,18 @@ Always respond with valid JSON in this exact format:
       // Parse JSON from response
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          summary: parsed.summary || `Document: ${fileName}`,
-          key_topics: parsed.key_topics || [],
-          entities: parsed.entities || [],
-          document_type: parsed.document_type || "unknown",
-          complexity_level: parsed.complexity_level || "medium"
-        };
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            summary: parsed.summary || `Document: ${fileName}`,
+            key_topics: parsed.key_topics || [],
+            entities: parsed.entities || [],
+            document_type: parsed.document_type || "unknown",
+            complexity_level: parsed.complexity_level || "medium"
+          };
+        } catch (parseError) {
+          console.error("Document analysis JSON parse error:", parseError);
+        }
       }
     }
   } catch (error) {
@@ -157,12 +161,16 @@ Generate context and tags for this chunk.`
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          context: parsed.context || "",
-          concepts: parsed.concepts || [],
-          tags: parsed.tags || []
-        };
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            context: parsed.context || "",
+            concepts: parsed.concepts || [],
+            tags: parsed.tags || []
+          };
+        } catch (parseError) {
+          console.error("Chunk context JSON parse error:", parseError);
+        }
       }
     }
   } catch (error) {
