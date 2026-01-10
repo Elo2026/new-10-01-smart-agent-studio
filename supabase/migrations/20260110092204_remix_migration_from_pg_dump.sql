@@ -114,14 +114,19 @@ CREATE FUNCTION public.is_workspace_admin(_workspace_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM workspaces WHERE id = _workspace_id AND created_by = auth.uid()
-  ) OR EXISTS (
-    SELECT 1 FROM team_members 
-    WHERE workspace_id = _workspace_id 
-    AND user_id = auth.uid() 
-    AND role IN ('owner', 'admin')
-  )
+  SELECT CASE 
+    WHEN auth.uid() IS NULL THEN false
+    WHEN _workspace_id IS NULL THEN false
+    ELSE EXISTS (
+      SELECT 1 FROM workspaces 
+      WHERE id = _workspace_id AND created_by = auth.uid()
+    ) OR EXISTS (
+      SELECT 1 FROM team_members 
+      WHERE workspace_id = _workspace_id 
+        AND user_id = auth.uid() 
+        AND role IN ('owner', 'admin')
+    )
+  END
 $$;
 
 
@@ -133,11 +138,17 @@ CREATE FUNCTION public.is_workspace_member(_workspace_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM workspaces WHERE id = _workspace_id AND created_by = auth.uid()
-  ) OR EXISTS (
-    SELECT 1 FROM team_members WHERE workspace_id = _workspace_id AND user_id = auth.uid()
-  )
+  SELECT CASE 
+    WHEN auth.uid() IS NULL THEN false
+    WHEN _workspace_id IS NULL THEN false
+    ELSE EXISTS (
+      SELECT 1 FROM workspaces 
+      WHERE id = _workspace_id AND created_by = auth.uid()
+    ) OR EXISTS (
+      SELECT 1 FROM team_members 
+      WHERE workspace_id = _workspace_id AND user_id = auth.uid()
+    )
+  END
 $$;
 
 
@@ -192,6 +203,71 @@ CREATE TABLE public.activity_feed (
     description text,
     metadata jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: agent_memory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_memory (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    agent_id uuid,
+    workspace_id uuid,
+    memory_type text NOT NULL,
+    memory_key text NOT NULL,
+    memory_value jsonb NOT NULL,
+    confidence real DEFAULT 0.5,
+    importance real DEFAULT 0.5,
+    last_accessed timestamp with time zone DEFAULT now(),
+    access_count integer DEFAULT 1,
+    source_conversation_id uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT agent_memory_confidence_check CHECK (((confidence >= (0)::double precision) AND (confidence <= (1)::double precision))),
+    CONSTRAINT agent_memory_importance_check CHECK (((importance >= (0)::double precision) AND (importance <= (1)::double precision))),
+    CONSTRAINT agent_memory_memory_type_check CHECK ((memory_type = ANY (ARRAY['preference'::text, 'fact'::text, 'correction_pattern'::text, 'topic_interest'::text, 'communication_style'::text])))
+);
+
+
+--
+-- Name: agent_reasoning_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_reasoning_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid,
+    message_id uuid,
+    step_number integer NOT NULL,
+    step_type text NOT NULL,
+    content text NOT NULL,
+    tool_name text,
+    tool_input jsonb,
+    tool_output jsonb,
+    confidence real,
+    latency_ms integer,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT agent_reasoning_logs_step_type_check CHECK ((step_type = ANY (ARRAY['thought'::text, 'action'::text, 'observation'::text, 'answer'::text])))
+);
+
+
+--
+-- Name: agent_tools; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_tools (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    display_name text NOT NULL,
+    description text,
+    tool_type text NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb,
+    is_active boolean DEFAULT true,
+    workspace_id uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT agent_tools_tool_type_check CHECK ((tool_type = ANY (ARRAY['search'::text, 'web'::text, 'calculate'::text, 'summarize'::text, 'compare'::text, 'analyze'::text])))
 );
 
 
@@ -329,6 +405,30 @@ CREATE TABLE public.knowledge_folders (
 
 
 --
+-- Name: knowledge_summaries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.knowledge_summaries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    folder_id uuid,
+    workspace_id uuid,
+    level integer NOT NULL,
+    parent_summary_id uuid,
+    title text,
+    content text NOT NULL,
+    source_chunks uuid[] DEFAULT '{}'::uuid[],
+    child_summaries uuid[] DEFAULT '{}'::uuid[],
+    key_concepts text[] DEFAULT '{}'::text[],
+    entity_mentions jsonb DEFAULT '[]'::jsonb,
+    embedding text,
+    token_count integer,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT knowledge_summaries_level_check CHECK (((level >= 0) AND (level <= 3)))
+);
+
+
+--
 -- Name: marketplace_imports; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -401,6 +501,22 @@ CREATE TABLE public.multi_agent_configs (
     created_by uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: query_complexity_cache; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.query_complexity_cache (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    query_hash text NOT NULL,
+    original_query text NOT NULL,
+    complexity text NOT NULL,
+    recommended_strategy text NOT NULL,
+    analysis_details jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT query_complexity_cache_complexity_check CHECK ((complexity = ANY (ARRAY['simple'::text, 'moderate'::text, 'complex'::text, 'conversational'::text])))
 );
 
 
@@ -573,6 +689,29 @@ CREATE TABLE public.rag_self_evaluation (
 
 
 --
+-- Name: rag_strategy_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.rag_strategy_metrics (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid,
+    strategy_name text NOT NULL,
+    query_complexity text,
+    success_count integer DEFAULT 0,
+    failure_count integer DEFAULT 0,
+    total_queries integer DEFAULT 0,
+    positive_feedback integer DEFAULT 0,
+    negative_feedback integer DEFAULT 0,
+    avg_latency_ms real,
+    avg_confidence real,
+    last_used timestamp with time zone DEFAULT now(),
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT rag_strategy_metrics_query_complexity_check CHECK ((query_complexity = ANY (ARRAY['simple'::text, 'moderate'::text, 'complex'::text, 'conversational'::text])))
+);
+
+
+--
 -- Name: scheduled_jobs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -688,6 +827,46 @@ ALTER TABLE ONLY public.activity_feed
 
 
 --
+-- Name: agent_memory agent_memory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_memory
+    ADD CONSTRAINT agent_memory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: agent_memory agent_memory_user_id_agent_id_memory_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_memory
+    ADD CONSTRAINT agent_memory_user_id_agent_id_memory_key_key UNIQUE (user_id, agent_id, memory_key);
+
+
+--
+-- Name: agent_reasoning_logs agent_reasoning_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_reasoning_logs
+    ADD CONSTRAINT agent_reasoning_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: agent_tools agent_tools_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_tools
+    ADD CONSTRAINT agent_tools_name_key UNIQUE (name);
+
+
+--
+-- Name: agent_tools agent_tools_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_tools
+    ADD CONSTRAINT agent_tools_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: agent_workflows agent_workflows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -744,6 +923,14 @@ ALTER TABLE ONLY public.knowledge_folders
 
 
 --
+-- Name: knowledge_summaries knowledge_summaries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.knowledge_summaries
+    ADD CONSTRAINT knowledge_summaries_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: marketplace_imports marketplace_imports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -781,6 +968,22 @@ ALTER TABLE ONLY public.marketplace_ratings
 
 ALTER TABLE ONLY public.multi_agent_configs
     ADD CONSTRAINT multi_agent_configs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: query_complexity_cache query_complexity_cache_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.query_complexity_cache
+    ADD CONSTRAINT query_complexity_cache_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: query_complexity_cache query_complexity_cache_query_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.query_complexity_cache
+    ADD CONSTRAINT query_complexity_cache_query_hash_key UNIQUE (query_hash);
 
 
 --
@@ -845,6 +1048,22 @@ ALTER TABLE ONLY public.rag_retrieval_logs
 
 ALTER TABLE ONLY public.rag_self_evaluation
     ADD CONSTRAINT rag_self_evaluation_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rag_strategy_metrics rag_strategy_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rag_strategy_metrics
+    ADD CONSTRAINT rag_strategy_metrics_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rag_strategy_metrics rag_strategy_metrics_workspace_id_strategy_name_query_compl_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rag_strategy_metrics
+    ADD CONSTRAINT rag_strategy_metrics_workspace_id_strategy_name_query_compl_key UNIQUE (workspace_id, strategy_name, query_complexity);
 
 
 --
@@ -926,6 +1145,41 @@ CREATE INDEX idx_activity_feed_workspace ON public.activity_feed USING btree (wo
 
 
 --
+-- Name: idx_agent_memory_agent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_memory_agent ON public.agent_memory USING btree (agent_id);
+
+
+--
+-- Name: idx_agent_memory_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_memory_type ON public.agent_memory USING btree (memory_type);
+
+
+--
+-- Name: idx_agent_memory_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_memory_user ON public.agent_memory USING btree (user_id);
+
+
+--
+-- Name: idx_agent_reasoning_conversation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_reasoning_conversation ON public.agent_reasoning_logs USING btree (conversation_id);
+
+
+--
+-- Name: idx_agent_reasoning_message; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_reasoning_message ON public.agent_reasoning_logs USING btree (message_id);
+
+
+--
 -- Name: idx_agent_workflows_created_by; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1003,6 +1257,20 @@ CREATE INDEX idx_knowledge_folders_parent ON public.knowledge_folders USING btre
 
 
 --
+-- Name: idx_knowledge_summaries_folder; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_knowledge_summaries_folder ON public.knowledge_summaries USING btree (folder_id);
+
+
+--
+-- Name: idx_knowledge_summaries_level; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_knowledge_summaries_level ON public.knowledge_summaries USING btree (level);
+
+
+--
 -- Name: idx_marketplace_items_category; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1028,6 +1296,13 @@ CREATE INDEX idx_marketplace_items_tags ON public.marketplace_items USING gin (t
 --
 
 CREATE INDEX idx_marketplace_items_type ON public.marketplace_items USING btree (item_type);
+
+
+--
+-- Name: idx_query_complexity_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_query_complexity_hash ON public.query_complexity_cache USING btree (query_hash);
 
 
 --
@@ -1087,6 +1362,13 @@ CREATE INDEX idx_rag_retrieval_logs_created ON public.rag_retrieval_logs USING b
 
 
 --
+-- Name: idx_rag_strategy_metrics_strategy; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rag_strategy_metrics_strategy ON public.rag_strategy_metrics USING btree (strategy_name);
+
+
+--
 -- Name: idx_scheduled_jobs_workspace; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1143,6 +1425,20 @@ CREATE INDEX idx_workflow_runs_workspace ON public.workflow_runs USING btree (wo
 
 
 --
+-- Name: agent_memory update_agent_memory_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_agent_memory_updated_at BEFORE UPDATE ON public.agent_memory FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: agent_tools update_agent_tools_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_agent_tools_updated_at BEFORE UPDATE ON public.agent_tools FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
 -- Name: agent_workflows update_agent_workflows_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1161,6 +1457,13 @@ CREATE TRIGGER update_ai_profiles_updated_at BEFORE UPDATE ON public.ai_profiles
 --
 
 CREATE TRIGGER update_knowledge_folders_updated_at BEFORE UPDATE ON public.knowledge_folders FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: knowledge_summaries update_knowledge_summaries_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_knowledge_summaries_updated_at BEFORE UPDATE ON public.knowledge_summaries FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
@@ -1185,6 +1488,13 @@ CREATE TRIGGER update_multi_agent_configs_updated_at BEFORE UPDATE ON public.mul
 
 
 --
+-- Name: rag_strategy_metrics update_rag_strategy_metrics_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_rag_strategy_metrics_updated_at BEFORE UPDATE ON public.rag_strategy_metrics FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
 -- Name: workspace_api_keys update_workspace_api_keys_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1204,6 +1514,54 @@ CREATE TRIGGER update_workspaces_updated_at BEFORE UPDATE ON public.workspaces F
 
 ALTER TABLE ONLY public.activity_feed
     ADD CONSTRAINT activity_feed_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_memory agent_memory_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_memory
+    ADD CONSTRAINT agent_memory_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES public.ai_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_memory agent_memory_source_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_memory
+    ADD CONSTRAINT agent_memory_source_conversation_id_fkey FOREIGN KEY (source_conversation_id) REFERENCES public.chat_conversations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: agent_memory agent_memory_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_memory
+    ADD CONSTRAINT agent_memory_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_reasoning_logs agent_reasoning_logs_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_reasoning_logs
+    ADD CONSTRAINT agent_reasoning_logs_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.chat_conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_reasoning_logs agent_reasoning_logs_message_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_reasoning_logs
+    ADD CONSTRAINT agent_reasoning_logs_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.chat_messages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_tools agent_tools_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_tools
+    ADD CONSTRAINT agent_tools_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
@@ -1316,6 +1674,30 @@ ALTER TABLE ONLY public.knowledge_folders
 
 ALTER TABLE ONLY public.knowledge_folders
     ADD CONSTRAINT knowledge_folders_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: knowledge_summaries knowledge_summaries_folder_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.knowledge_summaries
+    ADD CONSTRAINT knowledge_summaries_folder_id_fkey FOREIGN KEY (folder_id) REFERENCES public.knowledge_folders(id) ON DELETE CASCADE;
+
+
+--
+-- Name: knowledge_summaries knowledge_summaries_parent_summary_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.knowledge_summaries
+    ADD CONSTRAINT knowledge_summaries_parent_summary_id_fkey FOREIGN KEY (parent_summary_id) REFERENCES public.knowledge_summaries(id) ON DELETE SET NULL;
+
+
+--
+-- Name: knowledge_summaries knowledge_summaries_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.knowledge_summaries
+    ADD CONSTRAINT knowledge_summaries_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
@@ -1447,6 +1829,14 @@ ALTER TABLE ONLY public.rag_self_evaluation
 
 
 --
+-- Name: rag_strategy_metrics rag_strategy_metrics_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rag_strategy_metrics
+    ADD CONSTRAINT rag_strategy_metrics_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
 -- Name: scheduled_jobs scheduled_jobs_workflow_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1519,6 +1909,127 @@ ALTER TABLE ONLY public.workspace_api_keys
 
 
 --
+-- Name: agent_tools Admins can manage tools in their workspace; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Admins can manage tools in their workspace" ON public.agent_tools USING (((workspace_id IS NOT NULL) AND public.is_workspace_admin(workspace_id)));
+
+
+--
+-- Name: query_complexity_cache Authenticated can insert complexity cache; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Authenticated can insert complexity cache" ON public.query_complexity_cache FOR INSERT TO authenticated WITH CHECK ((auth.uid() IS NOT NULL));
+
+
+--
+-- Name: query_complexity_cache Authenticated can read complexity cache; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Authenticated can read complexity cache" ON public.query_complexity_cache FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: agent_reasoning_logs Authenticated users can insert reasoning logs; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Authenticated users can insert reasoning logs" ON public.agent_reasoning_logs FOR INSERT TO authenticated WITH CHECK (((conversation_id IS NULL) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE public.is_workspace_member(chat_conversations.workspace_id)))));
+
+
+--
+-- Name: knowledge_summaries Authenticated users can manage summaries; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Authenticated users can manage summaries" ON public.knowledge_summaries TO authenticated USING (((workspace_id IS NULL) OR public.is_workspace_member(workspace_id))) WITH CHECK (((workspace_id IS NULL) OR public.is_workspace_member(workspace_id)));
+
+
+--
+-- Name: rag_citations Create citations in accessible conversations; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create citations in accessible conversations" ON public.rag_citations FOR INSERT TO authenticated WITH CHECK (((conversation_id IS NULL) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE ((chat_conversations.workspace_id IS NULL) OR public.is_workspace_member(chat_conversations.workspace_id))))));
+
+
+--
+-- Name: rag_chunk_corrections Create corrections for accessible chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create corrections for accessible chunks" ON public.rag_chunk_corrections FOR INSERT TO authenticated WITH CHECK ((corrected_by = auth.uid()));
+
+
+--
+-- Name: rag_knowledge_graph Create knowledge graph for accessible chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create knowledge graph for accessible chunks" ON public.rag_knowledge_graph FOR INSERT TO authenticated WITH CHECK (((chunk_id IS NULL) OR (chunk_id IN ( SELECT kc.id
+   FROM (public.knowledge_chunks kc
+     LEFT JOIN public.knowledge_folders kf ON ((kc.folder_id = kf.id)))
+  WHERE ((kf.workspace_id IS NULL) OR public.is_workspace_member(kf.workspace_id))))));
+
+
+--
+-- Name: rag_feedback Create own feedback; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create own feedback" ON public.rag_feedback FOR INSERT TO authenticated WITH CHECK (((user_id = auth.uid()) OR (user_id IS NULL)));
+
+
+--
+-- Name: rag_pipeline_configs Create pipeline configs for accessible agents; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create pipeline configs for accessible agents" ON public.rag_pipeline_configs FOR INSERT TO authenticated WITH CHECK (((agent_id IS NULL) OR (agent_id IN ( SELECT ai_profiles.id
+   FROM public.ai_profiles
+  WHERE ((ai_profiles.workspace_id IS NULL) OR public.is_workspace_member(ai_profiles.workspace_id))))));
+
+
+--
+-- Name: rag_query_expansions Create query expansions; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create query expansions" ON public.rag_query_expansions FOR INSERT TO authenticated WITH CHECK ((auth.uid() IS NOT NULL));
+
+
+--
+-- Name: rag_self_evaluation Create self evaluations for accessible conversations; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Create self evaluations for accessible conversations" ON public.rag_self_evaluation FOR INSERT TO authenticated WITH CHECK (((conversation_id IS NULL) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE ((chat_conversations.workspace_id IS NULL) OR public.is_workspace_member(chat_conversations.workspace_id))))));
+
+
+--
+-- Name: rag_knowledge_graph Delete knowledge graph for admin chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Delete knowledge graph for admin chunks" ON public.rag_knowledge_graph FOR DELETE TO authenticated USING (((chunk_id IS NULL) OR (chunk_id IN ( SELECT kc.id
+   FROM (public.knowledge_chunks kc
+     LEFT JOIN public.knowledge_folders kf ON ((kc.folder_id = kf.id)))
+  WHERE ((kf.workspace_id IS NULL) OR public.is_workspace_admin(kf.workspace_id))))));
+
+
+--
+-- Name: rag_pipeline_configs Delete pipeline configs for admin agents; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Delete pipeline configs for admin agents" ON public.rag_pipeline_configs FOR DELETE TO authenticated USING (((agent_id IS NULL) OR (agent_id IN ( SELECT ai_profiles.id
+   FROM public.ai_profiles
+  WHERE ((ai_profiles.workspace_id IS NULL) OR public.is_workspace_admin(ai_profiles.workspace_id))))));
+
+
+--
+-- Name: rag_strategy_metrics Manage metrics in accessible workspace; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Manage metrics in accessible workspace" ON public.rag_strategy_metrics TO authenticated USING (((workspace_id IS NULL) OR public.is_workspace_member(workspace_id))) WITH CHECK (((workspace_id IS NULL) OR public.is_workspace_member(workspace_id)));
+
+
+--
 -- Name: team_members Members can view accepted team members in their workspaces; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -1540,6 +2051,39 @@ CREATE POLICY "Ratings are viewable by everyone" ON public.marketplace_ratings F
 
 
 --
+-- Name: rag_knowledge_graph Update knowledge graph for admin chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Update knowledge graph for admin chunks" ON public.rag_knowledge_graph FOR UPDATE TO authenticated USING (((chunk_id IS NULL) OR (chunk_id IN ( SELECT kc.id
+   FROM (public.knowledge_chunks kc
+     LEFT JOIN public.knowledge_folders kf ON ((kc.folder_id = kf.id)))
+  WHERE ((kf.workspace_id IS NULL) OR public.is_workspace_admin(kf.workspace_id))))));
+
+
+--
+-- Name: rag_chunk_corrections Update own corrections; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Update own corrections" ON public.rag_chunk_corrections FOR UPDATE TO authenticated USING ((corrected_by = auth.uid()));
+
+
+--
+-- Name: rag_feedback Update own feedback; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Update own feedback" ON public.rag_feedback FOR UPDATE TO authenticated USING (((user_id = auth.uid()) OR (user_id IS NULL)));
+
+
+--
+-- Name: rag_pipeline_configs Update pipeline configs for accessible agents; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Update pipeline configs for accessible agents" ON public.rag_pipeline_configs FOR UPDATE TO authenticated USING (((agent_id IS NULL) OR (agent_id IN ( SELECT ai_profiles.id
+   FROM public.ai_profiles
+  WHERE ((ai_profiles.workspace_id IS NULL) OR public.is_workspace_member(ai_profiles.workspace_id))))));
+
+
+--
 -- Name: activity_feed Users can create activity in their workspaces; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -1550,13 +2094,6 @@ UNION
  SELECT team_members.workspace_id
    FROM public.team_members
   WHERE (team_members.user_id = auth.uid()))));
-
-
---
--- Name: rag_citations Users can create citations; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create citations" ON public.rag_citations FOR INSERT WITH CHECK (true);
 
 
 --
@@ -1573,31 +2110,10 @@ UNION
 
 
 --
--- Name: rag_chunk_corrections Users can create corrections; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create corrections" ON public.rag_chunk_corrections FOR INSERT WITH CHECK (true);
-
-
---
--- Name: rag_feedback Users can create feedback; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create feedback" ON public.rag_feedback FOR INSERT WITH CHECK (true);
-
-
---
 -- Name: marketplace_imports Users can create imports; Type: POLICY; Schema: public; Owner: -
 --
 
 CREATE POLICY "Users can create imports" ON public.marketplace_imports FOR INSERT WITH CHECK ((auth.uid() = imported_by));
-
-
---
--- Name: rag_knowledge_graph Users can create knowledge graph entries; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create knowledge graph entries" ON public.rag_knowledge_graph FOR INSERT WITH CHECK (true);
 
 
 --
@@ -1614,27 +2130,6 @@ CREATE POLICY "Users can create marketplace items" ON public.marketplace_items F
 CREATE POLICY "Users can create messages in their conversations" ON public.chat_messages FOR INSERT WITH CHECK ((conversation_id IN ( SELECT chat_conversations.id
    FROM public.chat_conversations
   WHERE (chat_conversations.created_by = auth.uid()))));
-
-
---
--- Name: rag_pipeline_configs Users can create pipeline configs; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create pipeline configs" ON public.rag_pipeline_configs FOR INSERT WITH CHECK (true);
-
-
---
--- Name: rag_query_expansions Users can create query expansions; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create query expansions" ON public.rag_query_expansions FOR INSERT WITH CHECK (true);
-
-
---
--- Name: rag_self_evaluation Users can create self evaluations; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can create self evaluations" ON public.rag_self_evaluation FOR INSERT WITH CHECK (true);
 
 
 --
@@ -1730,20 +2225,6 @@ UNION
  SELECT team_members.workspace_id
    FROM public.team_members
   WHERE ((team_members.user_id = auth.uid()) AND (team_members.role = ANY (ARRAY['owner'::text, 'admin'::text, 'editor'::text]))))) OR ((workspace_id IS NULL) AND (created_by = auth.uid()))));
-
-
---
--- Name: rag_knowledge_graph Users can delete knowledge graph; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can delete knowledge graph" ON public.rag_knowledge_graph FOR DELETE USING (true);
-
-
---
--- Name: rag_pipeline_configs Users can delete pipeline configs; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can delete pipeline configs" ON public.rag_pipeline_configs FOR DELETE USING (true);
 
 
 --
@@ -1878,6 +2359,13 @@ CREATE POLICY "Users can insert workspace retrieval logs" ON public.rag_retrieva
 
 
 --
+-- Name: agent_memory Users can manage their own memory; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can manage their own memory" ON public.agent_memory USING ((user_id = auth.uid()));
+
+
+--
 -- Name: scheduled_jobs Users can manage their workspace scheduled jobs; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -1888,34 +2376,6 @@ UNION
  SELECT team_members.workspace_id
    FROM public.team_members
   WHERE ((team_members.user_id = auth.uid()) AND (team_members.role = ANY (ARRAY['owner'::text, 'admin'::text]))))));
-
-
---
--- Name: rag_chunk_corrections Users can update corrections; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can update corrections" ON public.rag_chunk_corrections FOR UPDATE USING (((corrected_by = auth.uid()) OR (corrected_by IS NULL)));
-
-
---
--- Name: rag_knowledge_graph Users can update knowledge graph; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can update knowledge graph" ON public.rag_knowledge_graph FOR UPDATE USING (true);
-
-
---
--- Name: rag_pipeline_configs Users can update pipeline configs; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can update pipeline configs" ON public.rag_pipeline_configs FOR UPDATE USING (true);
-
-
---
--- Name: rag_feedback Users can update their feedback; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can update their feedback" ON public.rag_feedback FOR UPDATE USING (((user_id = auth.uid()) OR (user_id IS NULL)));
 
 
 --
@@ -2021,34 +2481,6 @@ UNION
 
 
 --
--- Name: rag_citations Users can view citations; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view citations" ON public.rag_citations FOR SELECT USING (true);
-
-
---
--- Name: rag_chunk_corrections Users can view corrections; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view corrections" ON public.rag_chunk_corrections FOR SELECT USING (true);
-
-
---
--- Name: rag_feedback Users can view feedback; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view feedback" ON public.rag_feedback FOR SELECT USING (true);
-
-
---
--- Name: rag_knowledge_graph Users can view knowledge graph; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view knowledge graph" ON public.rag_knowledge_graph FOR SELECT USING (true);
-
-
---
 -- Name: chat_messages Users can view messages in their conversations; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -2064,24 +2496,19 @@ CREATE POLICY "Users can view messages in their conversations" ON public.chat_me
 
 
 --
--- Name: rag_pipeline_configs Users can view pipeline configs; Type: POLICY; Schema: public; Owner: -
+-- Name: agent_reasoning_logs Users can view reasoning logs for their conversations; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY "Users can view pipeline configs" ON public.rag_pipeline_configs FOR SELECT USING (true);
-
-
---
--- Name: rag_query_expansions Users can view query expansions; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view query expansions" ON public.rag_query_expansions FOR SELECT USING (true);
+CREATE POLICY "Users can view reasoning logs for their conversations" ON public.agent_reasoning_logs FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.chat_conversations c
+  WHERE ((c.id = agent_reasoning_logs.conversation_id) AND public.is_workspace_member(c.workspace_id)))));
 
 
 --
--- Name: rag_self_evaluation Users can view self evaluations; Type: POLICY; Schema: public; Owner: -
+-- Name: knowledge_summaries Users can view summaries in their workspace; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY "Users can view self evaluations" ON public.rag_self_evaluation FOR SELECT USING (true);
+CREATE POLICY "Users can view summaries in their workspace" ON public.knowledge_summaries FOR SELECT USING (public.is_workspace_member(workspace_id));
 
 
 --
@@ -2103,6 +2530,13 @@ CREATE POLICY "Users can view their own imports" ON public.marketplace_imports F
 --
 
 CREATE POLICY "Users can view their own marketplace items" ON public.marketplace_items FOR SELECT USING ((auth.uid() = publisher_id));
+
+
+--
+-- Name: agent_memory Users can view their own memory; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can view their own memory" ON public.agent_memory FOR SELECT USING ((user_id = auth.uid()));
 
 
 --
@@ -2169,6 +2603,13 @@ UNION
  SELECT team_members.workspace_id
    FROM public.team_members
   WHERE (team_members.user_id = auth.uid()))));
+
+
+--
+-- Name: agent_tools Users can view tools in their workspace; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can view tools in their workspace" ON public.agent_tools FOR SELECT USING (((workspace_id IS NULL) OR public.is_workspace_member(workspace_id)));
 
 
 --
@@ -2254,6 +2695,69 @@ UNION
 
 
 --
+-- Name: rag_citations View citations in accessible conversations; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View citations in accessible conversations" ON public.rag_citations FOR SELECT TO authenticated USING (((conversation_id IS NULL) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE ((chat_conversations.workspace_id IS NULL) OR public.is_workspace_member(chat_conversations.workspace_id))))));
+
+
+--
+-- Name: rag_chunk_corrections View corrections for accessible chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View corrections for accessible chunks" ON public.rag_chunk_corrections FOR SELECT TO authenticated USING (((corrected_by = auth.uid()) OR (chunk_id IN ( SELECT kc.id
+   FROM (public.knowledge_chunks kc
+     LEFT JOIN public.knowledge_folders kf ON ((kc.folder_id = kf.id)))
+  WHERE ((kf.workspace_id IS NULL) OR public.is_workspace_member(kf.workspace_id))))));
+
+
+--
+-- Name: rag_knowledge_graph View knowledge graph for accessible chunks; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View knowledge graph for accessible chunks" ON public.rag_knowledge_graph FOR SELECT TO authenticated USING (((chunk_id IS NULL) OR (chunk_id IN ( SELECT kc.id
+   FROM (public.knowledge_chunks kc
+     LEFT JOIN public.knowledge_folders kf ON ((kc.folder_id = kf.id)))
+  WHERE ((kf.workspace_id IS NULL) OR public.is_workspace_member(kf.workspace_id))))));
+
+
+--
+-- Name: rag_feedback View own feedback or workspace feedback; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View own feedback or workspace feedback" ON public.rag_feedback FOR SELECT TO authenticated USING (((user_id = auth.uid()) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE ((chat_conversations.workspace_id IS NULL) OR public.is_workspace_member(chat_conversations.workspace_id))))));
+
+
+--
+-- Name: rag_pipeline_configs View pipeline configs for accessible agents; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View pipeline configs for accessible agents" ON public.rag_pipeline_configs FOR SELECT TO authenticated USING (((agent_id IS NULL) OR (agent_id IN ( SELECT ai_profiles.id
+   FROM public.ai_profiles
+  WHERE ((ai_profiles.workspace_id IS NULL) OR public.is_workspace_member(ai_profiles.workspace_id))))));
+
+
+--
+-- Name: rag_query_expansions View query expansions; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View query expansions" ON public.rag_query_expansions FOR SELECT TO authenticated USING ((auth.uid() IS NOT NULL));
+
+
+--
+-- Name: rag_self_evaluation View self evaluations for accessible conversations; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "View self evaluations for accessible conversations" ON public.rag_self_evaluation FOR SELECT TO authenticated USING (((conversation_id IS NULL) OR (conversation_id IN ( SELECT chat_conversations.id
+   FROM public.chat_conversations
+  WHERE ((chat_conversations.workspace_id IS NULL) OR public.is_workspace_member(chat_conversations.workspace_id))))));
+
+
+--
 -- Name: workspace_api_keys Workspace admins can create API keys; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -2319,6 +2823,24 @@ UNION
 ALTER TABLE public.activity_feed ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: agent_memory; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.agent_memory ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: agent_reasoning_logs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.agent_reasoning_logs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: agent_tools; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.agent_tools ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: agent_workflows; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -2361,6 +2883,12 @@ ALTER TABLE public.knowledge_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.knowledge_folders ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: knowledge_summaries; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.knowledge_summaries ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: marketplace_imports; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -2383,6 +2911,12 @@ ALTER TABLE public.marketplace_ratings ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.multi_agent_configs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: query_complexity_cache; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.query_complexity_cache ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: rag_chunk_corrections; Type: ROW SECURITY; Schema: public; Owner: -
@@ -2431,6 +2965,12 @@ ALTER TABLE public.rag_retrieval_logs ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.rag_self_evaluation ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: rag_strategy_metrics; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.rag_strategy_metrics ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: scheduled_jobs; Type: ROW SECURITY; Schema: public; Owner: -
