@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Send, Bot, User, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, X, Maximize2, Minimize2, Lightbulb } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,6 +21,11 @@ interface AgentNode {
   label: string;
   model: string;
   agentId: string;
+}
+
+interface SuggestedPrompt {
+  text: string;
+  description: string;
 }
 
 interface AgentChatPanelProps {
@@ -44,6 +49,66 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Generate dynamic suggested prompts based on agents in the workflow
+  const suggestedPrompts = useMemo<SuggestedPrompt[]>(() => {
+    const agentNames = agents.map(a => a.label).join(', ');
+    const firstAgent = agents[0]?.label || 'the agent';
+    const agentCount = agents.length;
+    
+    const basePrompts: SuggestedPrompt[] = [
+      {
+        text: 'What can you help me with?',
+        description: 'Learn workflow capabilities'
+      },
+      {
+        text: `Analyze this document and provide a summary`,
+        description: 'Document analysis task'
+      },
+      {
+        text: 'Walk me through how you will process my request',
+        description: 'Understand the workflow'
+      },
+    ];
+
+    // Add agent-specific prompts
+    if (agentCount > 1) {
+      basePrompts.push({
+        text: `How do the ${agentCount} agents work together?`,
+        description: 'Multi-agent collaboration'
+      });
+    }
+
+    // Add model-specific prompts
+    const hasAnalyst = agents.some(a => a.model === 'core_analyst');
+    const hasReviewer = agents.some(a => a.model === 'core_reviewer');
+    const hasSynthesizer = agents.some(a => a.model === 'core_synthesizer');
+
+    if (hasAnalyst) {
+      basePrompts.push({
+        text: 'Analyze the key patterns and insights from this data',
+        description: 'Data analysis'
+      });
+    }
+    if (hasReviewer) {
+      basePrompts.push({
+        text: 'Review and provide feedback on this content',
+        description: 'Content review'
+      });
+    }
+    if (hasSynthesizer) {
+      basePrompts.push({
+        text: 'Synthesize this information into a comprehensive report',
+        description: 'Report generation'
+      });
+    }
+
+    return basePrompts.slice(0, 5);
+  }, [agents]);
+
+  const handlePromptClick = (prompt: string) => {
+    setInput(prompt);
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -212,12 +277,38 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         {/* Messages Area */}
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <div className="text-center">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <div className="text-center mb-6">
                 <Bot className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">Start testing your workflow</p>
+                <p className="text-sm font-medium">Start testing your workflow</p>
                 <p className="text-xs mt-1 opacity-70">Your message will be processed by all agents</p>
               </div>
+              
+              {/* Suggested Prompts */}
+              {suggestedPrompts.length > 0 && (
+                <div className="w-full max-w-sm space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                    <Lightbulb className="h-3.5 w-3.5" />
+                    <span>Try these prompts:</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {suggestedPrompts.map((prompt, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handlePromptClick(prompt.text)}
+                        className="w-full text-left p-2.5 rounded-lg border border-border/50 bg-card hover:bg-muted hover:border-primary/30 transition-all group"
+                      >
+                        <p className="text-sm font-medium group-hover:text-primary transition-colors">
+                          {prompt.text}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {prompt.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">

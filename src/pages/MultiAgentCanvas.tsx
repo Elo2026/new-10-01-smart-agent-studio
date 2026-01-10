@@ -25,7 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock, Undo2, Redo2 } from 'lucide-react';
+import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock, Undo2, Redo2, Printer } from 'lucide-react';
+import { usePrintCanvas } from '@/hooks/usePrintCanvas';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -232,6 +233,9 @@ export const MultiAgentCanvas: React.FC = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [showEditor, setShowEditor] = useState(!!configId);
+
+  // Print/PDF functionality
+  const { printCanvas, exportAsPDF } = usePrintCanvas();
 
   // Undo/Redo functionality
   const { undo, redo, canUndo, canRedo, takeSnapshot, isUndoRedoAction } = useUndoRedo(
@@ -672,6 +676,16 @@ export const MultiAgentCanvas: React.FC = () => {
           <Button variant="outline" size="sm" onClick={() => setPublishDialogOpen(true)} className="gap-1.5">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Publish</span>
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => exportAsPDF({ title: configName, subtitle: configDescription })} 
+            className="gap-1.5"
+            title="Print / Export as PDF"
+          >
+            <Printer className="h-4 w-4" />
+            <span className="hidden sm:inline">Print</span>
           </Button>
           {configId && (
             <>

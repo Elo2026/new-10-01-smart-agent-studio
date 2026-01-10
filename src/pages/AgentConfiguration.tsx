@@ -208,6 +208,13 @@ export const AgentConfiguration: React.FC = () => {
 
     setLoading(true);
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast({ title: 'Error', description: 'You must be logged in to save an agent', variant: 'destructive' });
+        setLoading(false);
+        return;
+      }
+
       const payload = {
         display_name: formData.display_name,
         user_defined_name: formData.user_defined_name || formData.display_name,
@@ -226,7 +233,12 @@ export const AgentConfiguration: React.FC = () => {
       };
 
       if (isNew) {
-        const { error } = await supabase.from('ai_profiles').insert(payload);
+        const insertPayload = {
+          ...payload,
+          created_by: userData.user.id,
+          workspace_id: currentWorkspace?.id || null,
+        };
+        const { error } = await supabase.from('ai_profiles').insert(insertPayload);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent created successfully' });
       } else {
