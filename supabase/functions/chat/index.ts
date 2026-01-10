@@ -236,6 +236,21 @@ serve(async (req) => {
       if (agentConfig.persona) systemPrompt += `\nPersona: ${agentConfig.persona}`;
       if (agentConfig.role_description) systemPrompt += `\nRole: ${agentConfig.role_description}`;
       if (agentConfig.intro_sentence) systemPrompt += `\nIntroduction: ${agentConfig.intro_sentence}`;
+      
+      // Apply response rules from agent configuration
+      if (agentConfig.response_rules) {
+        const rules = agentConfig.response_rules;
+        systemPrompt += `\n\n## RESPONSE RULES`;
+        if (rules.step_by_step === true) {
+          systemPrompt += `\n- Use step-by-step reasoning: Break down complex answers into clear, numbered steps`;
+        }
+        if (rules.cite_if_possible === true) {
+          systemPrompt += `\n- Cite sources: Reference specific documents or knowledge when available`;
+        }
+        if (rules.refuse_if_uncertain === true) {
+          systemPrompt += `\n- Refuse if uncertain: Acknowledge when you don't have enough information rather than guessing`;
+        }
+      }
     }
 
     console.log(`Sending request to Lovable AI Gateway for user: ${userId}`);

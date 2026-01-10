@@ -396,6 +396,25 @@ async function executeReActLoop(
   let agentPersona = "You are an intelligent AI agent with access to tools.";
   if (agentConfig?.persona) agentPersona = agentConfig.persona;
   if (agentConfig?.role_description) agentPersona += `\nRole: ${agentConfig.role_description}`;
+  
+  // Build response rules section
+  let responseRulesSection = "";
+  if (agentConfig?.response_rules) {
+    const rules = agentConfig.response_rules;
+    const rulesList: string[] = [];
+    if (rules.step_by_step === true) {
+      rulesList.push("Use step-by-step reasoning in your final answer");
+    }
+    if (rules.cite_if_possible === true) {
+      rulesList.push("Cite sources using [Source N] format when using retrieved information");
+    }
+    if (rules.refuse_if_uncertain === true) {
+      rulesList.push("Acknowledge limitations honestly when uncertain");
+    }
+    if (rulesList.length > 0) {
+      responseRulesSection = `\n\n## Response Rules\n${rulesList.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+    }
+  }
 
   const systemPrompt = `${agentPersona}
 
@@ -422,7 +441,7 @@ ANSWER: [Your final comprehensive answer]
 4. Cite sources using [Source N] format when using retrieved information
 5. Maximum ${maxSteps} reasoning steps before you must provide an answer
 6. If uncertain, acknowledge limitations honestly
-${memoryContext}`;
+${memoryContext}${responseRulesSection}`;
 
   let currentContext = `Question: ${query}`;
   
@@ -903,6 +922,105 @@ Assistant responded: "${response.substring(0, 500)}"`
 }
 
 // =============================================================================
+// AGENT BEHAVIOR ANALYZER - For Future Output Style Decisions
+// =============================================================================
+function analyzeResponseBehavior(
+  response: string,
+  responseRules?: { step_by_step?: boolean; cite_if_possible?: boolean; refuse_if_uncertain?: boolean }
+): {
+  word_count: number;
+  character_count: number;
+  sentence_count: number;
+  avg_sentence_length: number;
+  paragraph_count: number;
+  has_bullet_points: boolean;
+  has_numbered_list: boolean;
+  has_citations: boolean;
+  citation_count: number;
+  has_headers: boolean;
+  has_code_blocks: boolean;
+  tone_indicators: {
+    formal_score: number;
+    uses_contractions: boolean;
+    uses_first_person: boolean;
+  };
+  structure: 'concise' | 'balanced' | 'detailed';
+  rules_applied: string[];
+} {
+  const words = response.split(/\s+/).filter(w => w.length > 0);
+  const sentences = response.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const paragraphs = response.split(/\n\n+/).filter(p => p.trim().length > 0);
+  
+  const wordCount = words.length;
+  const characterCount = response.length;
+  const sentenceCount = sentences.length;
+  const avgSentenceLength = sentenceCount > 0 ? wordCount / sentenceCount : 0;
+  
+  // Detect formatting patterns
+  const hasBulletPoints = /^[\s]*[-•*]\s/m.test(response);
+  const hasNumberedList = /^[\s]*\d+[.)]\s/m.test(response);
+  const hasCitations = /\[Source \d+\]/i.test(response);
+  const citationMatches = response.match(/\[Source \d+\]/gi);
+  const citationCount = citationMatches ? citationMatches.length : 0;
+  const hasHeaders = /^#+\s|^[A-Z][A-Z\s]+:$/m.test(response);
+  const hasCodeBlocks = /```[\s\S]*?```/.test(response);
+  
+  // Tone analysis
+  const contractions = /(don't|won't|can't|isn't|aren't|wasn't|weren't|haven't|hasn't|hadn't|wouldn't|couldn't|shouldn't|I'm|you're|we're|they're|it's|that's|there's|here's|what's|who's|let's)/gi;
+  const usesContractions = contractions.test(response);
+  const usesFirstPerson = /\b(I|me|my|mine|we|us|our|ours)\b/i.test(response);
+  
+  // Formal score (0-1): higher = more formal
+  let formalScore = 0.5;
+  if (!usesContractions) formalScore += 0.2;
+  if (!usesFirstPerson) formalScore += 0.1;
+  if (hasHeaders) formalScore += 0.1;
+  if (avgSentenceLength > 20) formalScore += 0.1;
+  formalScore = Math.min(1, formalScore);
+  
+  // Determine structure category
+  let structure: 'concise' | 'balanced' | 'detailed' = 'balanced';
+  if (wordCount < 100) structure = 'concise';
+  else if (wordCount > 300) structure = 'detailed';
+  
+  // Check which rules were applied
+  const rulesApplied: string[] = [];
+  if (responseRules?.step_by_step && (hasNumberedList || hasBulletPoints)) {
+    rulesApplied.push('step_by_step');
+  }
+  if (responseRules?.cite_if_possible && hasCitations) {
+    rulesApplied.push('cite_if_possible');
+  }
+  if (responseRules?.refuse_if_uncertain) {
+    const uncertaintyPhrases = /I('m| am) not (sure|certain)|don't have enough|cannot (confirm|verify)|beyond my knowledge|uncertain/i;
+    if (uncertaintyPhrases.test(response)) {
+      rulesApplied.push('refuse_if_uncertain');
+    }
+  }
+  
+  return {
+    word_count: wordCount,
+    character_count: characterCount,
+    sentence_count: sentenceCount,
+    avg_sentence_length: Math.round(avgSentenceLength * 10) / 10,
+    paragraph_count: paragraphs.length,
+    has_bullet_points: hasBulletPoints,
+    has_numbered_list: hasNumberedList,
+    has_citations: hasCitations,
+    citation_count: citationCount,
+    has_headers: hasHeaders,
+    has_code_blocks: hasCodeBlocks,
+    tone_indicators: {
+      formal_score: Math.round(formalScore * 100) / 100,
+      uses_contractions: usesContractions,
+      uses_first_person: usesFirstPerson
+    },
+    structure,
+    rules_applied: rulesApplied
+  };
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 serve(async (req) => {
@@ -1038,7 +1156,25 @@ serve(async (req) => {
 
       let systemPrompt = agentConfig?.persona || "You are a helpful AI assistant.";
       if (agentConfig?.role_description) systemPrompt += `\nRole: ${agentConfig.role_description}`;
-      systemPrompt += `\n\nUse the provided context to answer questions. Cite sources using [Source N] format.\n\n=== CONTEXT ===\n${context}\n=== END CONTEXT ===`;
+      
+      // Apply response rules from agent configuration
+      if (agentConfig?.response_rules) {
+        const rules = agentConfig.response_rules;
+        systemPrompt += `\n\n## RESPONSE RULES`;
+        if (rules.step_by_step === true) {
+          systemPrompt += `\n- Use step-by-step reasoning: Break down complex answers into clear, numbered steps`;
+        }
+        if (rules.cite_if_possible === true) {
+          systemPrompt += `\n- Cite sources: Reference specific documents or knowledge using [Source N] format`;
+        } else {
+          systemPrompt += `\n- You may cite sources using [Source N] format when relevant`;
+        }
+        if (rules.refuse_if_uncertain === true) {
+          systemPrompt += `\n- Refuse if uncertain: Acknowledge when you don't have enough information rather than guessing`;
+        }
+      }
+      
+      systemPrompt += `\n\nUse the provided context to answer questions.\n\n=== CONTEXT ===\n${context}\n=== END CONTEXT ===`;
 
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
@@ -1143,6 +1279,10 @@ serve(async (req) => {
         console.error("Citations log error:", e);
       }
     }
+
+    // Step 8: Log agent behavior patterns for future Output Style analysis
+    const behaviorMetrics = analyzeResponseBehavior(response, agentConfig?.response_rules);
+    console.log(`Behavior Metrics: ${JSON.stringify(behaviorMetrics)}`);
 
     // Update strategy metrics
     const totalLatency = Date.now() - startTime;

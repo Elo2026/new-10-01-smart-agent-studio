@@ -485,8 +485,14 @@ export const AgentConfiguration: React.FC = () => {
             </div>
 
             <div className="p-4 rounded-lg bg-muted/50 border border-dashed border-border">
-              <p className="text-sm text-muted-foreground text-center">
-                Knowledge folder access is configured dynamically in the Multi-Agent Canvas when adding this agent to a workflow.
+              <div className="flex items-center gap-2 justify-center mb-2">
+                <Database className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground">Knowledge Base Access</span>
+              </div>
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                Folder access is configured per-workflow in the <span className="font-medium text-foreground">Multi-Agent Canvas</span>. 
+                This allows different workflows to use different knowledge sources with the same agent, 
+                providing flexibility for various use cases.
               </p>
             </div>
           </CardContent>
