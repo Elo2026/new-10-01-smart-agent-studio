@@ -475,3 +475,38 @@ html.theme-transitioning *::after {
   background: hsl(var(--primary) / 0.3);
   color: hsl(var(--foreground));
 }
+
+/* Onboarding highlight effect */
+.onboarding-highlight {
+  position: relative;
+  z-index: 50;
+  animation: onboarding-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.3), 0 0 20px hsl(var(--primary) / 0.2) !important;
+  border-radius: var(--radius);
+}
+
+@keyframes onboarding-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.3), 0 0 20px hsl(var(--primary) / 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0.2), 0 0 30px hsl(var(--primary) / 0.3);
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .react-flow__controls,
+  .react-flow__minimap {
+    display: none !important;
+  }
+}
