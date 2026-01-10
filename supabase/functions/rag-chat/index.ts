@@ -124,22 +124,26 @@ Last 2 messages context: ${conversationHistory.slice(-2).map(m => m.content?.sub
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        
-        // Cache the result
-        await supabase.from('query_complexity_cache').insert({
-          query_hash: hashHex,
-          original_query: query.substring(0, 500),
-          complexity: parsed.complexity,
-          recommended_strategy: parsed.strategy,
-          analysis_details: parsed.indicators || {}
-        }).catch(() => {}); // Ignore cache errors
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          
+          // Cache the result
+          await supabase.from('query_complexity_cache').insert({
+            query_hash: hashHex,
+            original_query: query.substring(0, 500),
+            complexity: parsed.complexity,
+            recommended_strategy: parsed.strategy,
+            analysis_details: parsed.indicators || {}
+          }).catch(() => {}); // Ignore cache errors
 
-        return {
-          complexity: parsed.complexity || 'moderate',
-          strategy: parsed.strategy || 'standard_rag',
-          reasoning: parsed.reasoning || ''
-        };
+          return {
+            complexity: parsed.complexity || 'moderate',
+            strategy: parsed.strategy || 'standard_rag',
+            reasoning: parsed.reasoning || ''
+          };
+        } catch (parseError) {
+          console.error("Query complexity JSON parse error:", parseError);
+        }
       }
     }
   } catch (error) {
@@ -794,12 +798,16 @@ Check each factual claim in the response against the sources.`
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          detected: parsed.hallucination_detected || false,
-          details: parsed.unsupported_claims || [],
-          confidence: parsed.confidence || 0.5
-        };
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            detected: parsed.hallucination_detected || false,
+            details: parsed.unsupported_claims || [],
+            confidence: parsed.confidence || 0.5
+          };
+        } catch (parseError) {
+          console.error("Hallucination detection JSON parse error:", parseError);
+        }
       }
     }
   } catch (error) {
@@ -866,20 +874,24 @@ Assistant responded: "${response.substring(0, 500)}"`
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        const memories = parsed.memories || [];
-        
-        for (const mem of memories) {
-          if (mem.key && mem.value) {
-            await updateAgentMemory(
-              userId, agentId, workspaceId,
-              mem.type || 'fact',
-              mem.key,
-              mem.value,
-              conversationId,
-              supabase
-            );
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          const memories = parsed.memories || [];
+          
+          for (const mem of memories) {
+            if (mem.key && mem.value) {
+              await updateAgentMemory(
+                userId, agentId, workspaceId,
+                mem.type || 'fact',
+                mem.key,
+                mem.value,
+                conversationId,
+                supabase
+              );
+            }
           }
+        } catch (parseError) {
+          console.error("Memory extraction JSON parse error:", parseError);
         }
       }
     }

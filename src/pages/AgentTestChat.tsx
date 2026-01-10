@@ -70,6 +70,13 @@ export const AgentTestChat: React.FC = () => {
     const messageToSend = promptOverride || input.trim();
     if (!messageToSend || !selectedAgent) return;
 
+    // Get user's session token for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      toast.error('Please sign in to use the chat');
+      return;
+    }
+
     promptRefinement.reset();
     abortControllerRef.current = new AbortController();
 
@@ -89,7 +96,7 @@ export const AgentTestChat: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ 
           messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
