@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Heart, Code2, Shield, FileText, HelpCircle } from 'lucide-react';
 import { useFloatingOnboarding, FloatingTooltip } from '@/components/onboarding/FloatingTooltip';
+import { OnboardingTour } from '@/components/onboarding/OnboardingTour';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -10,7 +11,7 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const onboarding = useFloatingOnboarding();
-
+  
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Sidebar />
@@ -41,9 +42,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </div>
         </div>
       </footer>
-
       {/* Floating Onboarding Tooltip */}
       <FloatingTooltip {...onboarding} />
+      {/* Interactive Onboarding Tour */}
+      <OnboardingTour />
     </div>
   );
 };
