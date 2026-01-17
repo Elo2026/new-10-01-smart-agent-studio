@@ -372,6 +372,44 @@ export type Database = {
           },
         ]
       }
+      api_key_access_logs: {
+        Row: {
+          access_type: string
+          accessed_at: string
+          accessed_by: string
+          api_key_id: string | null
+          id: string
+          ip_address: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          access_type: string
+          accessed_at?: string
+          accessed_by: string
+          api_key_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          access_type?: string
+          accessed_at?: string
+          accessed_by?: string
+          api_key_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_key_access_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_conversations: {
         Row: {
           agent_id: string | null
@@ -1723,7 +1761,47 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      workspace_members_public: {
+        Row: {
+          accepted_at: string | null
+          email: string | null
+          id: string | null
+          invited_at: string | null
+          invited_by: string | null
+          role: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          email?: never
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          email?: never
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_folder_descendants: {
