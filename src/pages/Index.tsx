@@ -7,12 +7,12 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-// إعدادات الأنيميشن الافتراضية للظهور (Fade In Up)
+// Animation preset for fade-in-up effect
 const fadeInUp = {
   initial: { opacity: 0, y: 30 },
   whileInView: { opacity: 1, y: 0 },
   viewport: { once: true },
-  transition: { duration: 0.8, ease: "easeOut" }
+  transition: { duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] as const }
 };
 
 const FeatureCard = ({ 
@@ -80,7 +80,7 @@ const Index = () => {
               y: [0, -40, 0],
               scale: [1, 1.1, 1] 
             }}
-            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" as const }}
             className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[120px]" 
           />
           <motion.div 
@@ -89,7 +89,7 @@ const Index = () => {
               y: [0, 50, 0],
               scale: [1, 1.2, 1] 
             }}
-            transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" as const }}
             className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent/20 rounded-full blur-[100px]" 
           />
         </div>
