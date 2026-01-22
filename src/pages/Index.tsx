@@ -5,9 +5,10 @@ import {
   ArrowRight, Bot, FileText, Users, Zap, Shield, 
   BarChart3, Globe, Code2, Layers, Cpu 
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Suspense } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Hero3DScene from "@/components/hero/Hero3DScene";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -190,14 +191,19 @@ const Index = () => {
     <div ref={mainRef} className="min-h-screen bg-background overflow-hidden selection:bg-primary/30">
       {/* Hero Section */}
       <section ref={heroRef} className="relative min-h-screen flex items-center justify-center py-20">
+        {/* 3D Background Scene */}
+        <Suspense fallback={null}>
+          <Hero3DScene />
+        </Suspense>
+        
         {/* Background Effects */}
         <div ref={orbsRef} className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
           
-          {/* Animated Orbs */}
-          <div className="orb-1 absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-primary/25 to-violet-500/20 rounded-full blur-[150px]" />
-          <div className="orb-2 absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-gradient-to-br from-accent/25 to-cyan-500/20 rounded-full blur-[120px]" />
-          <div className="orb-3 absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-gradient-to-br from-fuchsia-500/15 to-pink-500/10 rounded-full blur-[100px]" />
+          {/* Animated Orbs - more subtle now with 3D scene */}
+          <div className="orb-1 absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-primary/15 to-violet-500/10 rounded-full blur-[180px]" />
+          <div className="orb-2 absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-gradient-to-br from-accent/15 to-cyan-500/10 rounded-full blur-[150px]" />
+          <div className="orb-3 absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-gradient-to-br from-fuchsia-500/10 to-pink-500/5 rounded-full blur-[120px]" />
           
           {/* Grid overlay */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border)/0.03)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.03)_1px,transparent_1px)] bg-[size:80px_80px]" />
