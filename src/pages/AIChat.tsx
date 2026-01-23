@@ -56,6 +56,12 @@ export const AIChat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const promptRefinement = usePromptRefinement();
+  const getFunctionErrorMessage = (status: number, fallback: string) => {
+    if (status === 401) return 'Please sign in to continue.';
+    if (status === 403) return 'You do not have permission to perform this action.';
+    if (status >= 500) return 'The server encountered an error. Please try again soon.';
+    return fallback;
+  };
 
   // Track last visited path (before coming to AI Chat)
   useEffect(() => {
@@ -236,8 +242,12 @@ export const AIChat: React.FC = () => {
       });
 
       if (!resp.ok) {
-        const errorData = await resp.json();
-        throw new Error(errorData.error || 'Failed to get response');
+        const errorData = await resp.json().catch(() => ({}));
+        const fallbackMessage = errorData.error || 'Failed to get response';
+        toast.error(getFunctionErrorMessage(resp.status, fallbackMessage));
+        setIsLoading(false);
+        setIsTyping(false);
+        return;
       }
 
       if (!resp.body) throw new Error('No response body');
