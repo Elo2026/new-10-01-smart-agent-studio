@@ -158,7 +158,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  sources?: any[];
+  sources?: Record<string, unknown>[];
 }
 
 export type Language = 'en' | 'ar';
