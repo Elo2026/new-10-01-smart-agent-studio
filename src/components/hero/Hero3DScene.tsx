@@ -1,5 +1,5 @@
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Float, MeshDistortMaterial, MeshWobbleMaterial, Sphere, Box, Torus, Icosahedron } from '@react-three/drei';
+import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber';
+import { Float, MeshDistortMaterial, MeshWobbleMaterial, Sphere, Box, Torus, Icosahedron, Html } from '@react-three/drei';
 import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
@@ -59,7 +59,52 @@ function useMousePosition() {
   return mousePosition;
 }
 
-// Floating geometric shape with scroll interaction
+// Feature data for tooltips
+interface FeatureInfo {
+  title: string;
+  description: string;
+  icon: string;
+}
+
+const featureData: Record<string, FeatureInfo> = {
+  'ai-agents': {
+    title: 'AI Agents',
+    description: 'Intelligent autonomous agents that learn and adapt',
+    icon: '🤖'
+  },
+  'knowledge-base': {
+    title: 'Knowledge Base',
+    description: 'RAG-powered document retrieval and analysis',
+    icon: '📚'
+  },
+  'workflows': {
+    title: 'Workflows',
+    description: 'Visual multi-agent orchestration system',
+    icon: '⚡'
+  },
+  'analytics': {
+    title: 'Analytics',
+    description: 'Real-time insights and performance metrics',
+    icon: '📊'
+  },
+  'collaboration': {
+    title: 'Collaboration',
+    description: 'Team workspaces with real-time sync',
+    icon: '👥'
+  },
+  'integrations': {
+    title: 'Integrations',
+    description: 'Connect with your favorite tools',
+    icon: '🔗'
+  },
+  'security': {
+    title: 'Security',
+    description: 'Enterprise-grade data protection',
+    icon: '🔒'
+  }
+};
+
+// Floating geometric shape with scroll interaction and hover tooltip
 function FloatingShape({ 
   position, 
   shape, 
@@ -68,7 +113,9 @@ function FloatingShape({
   distort = 0.3,
   scale = 1,
   scrollProgress = 0,
-  scrollIntensity = 1
+  scrollIntensity = 1,
+  featureKey,
+  onShapeClick
 }: { 
   position: [number, number, number]; 
   shape: 'sphere' | 'box' | 'torus' | 'icosahedron';
@@ -78,9 +125,17 @@ function FloatingShape({
   scale?: number;
   scrollProgress?: number;
   scrollIntensity?: number;
+  featureKey?: string;
+  onShapeClick?: (feature: FeatureInfo) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const initialPosition = useRef(position);
+  const [isHovered, setIsHovered] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const hoverScale = useRef(1);
+
+  const feature = featureKey ? featureData[featureKey] : null;
 
   useFrame((state) => {
     if (meshRef.current) {
@@ -99,11 +154,35 @@ function FloatingShape({
       // Add extra rotation based on scroll
       meshRef.current.rotation.z = scrollProgress * Math.PI * 2 * scrollIntensity;
       
-      // Scale down slightly as we scroll
-      const scaleModifier = 1 - scrollProgress * 0.3;
+      // Smooth hover scale animation
+      const targetScale = isHovered ? 1.3 : 1;
+      hoverScale.current += (targetScale - hoverScale.current) * 0.1;
+      
+      // Scale down slightly as we scroll, with hover boost
+      const scaleModifier = (1 - scrollProgress * 0.3) * hoverScale.current;
       meshRef.current.scale.setScalar(scale * scaleModifier);
     }
   });
+
+  const handlePointerEnter = useCallback((e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    setIsHovered(true);
+    setShowTooltip(true);
+    document.body.style.cursor = 'pointer';
+  }, []);
+
+  const handlePointerLeave = useCallback(() => {
+    setIsHovered(false);
+    setShowTooltip(false);
+    document.body.style.cursor = 'auto';
+  }, []);
+
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (feature && onShapeClick) {
+      onShapeClick(feature);
+    }
+  }, [feature, onShapeClick]);
 
   const ShapeComponent = {
     sphere: Sphere,
@@ -116,18 +195,52 @@ function FloatingShape({
 
   return (
     <Float speed={speed * 2} rotationIntensity={0.5 - scrollProgress * 0.3} floatIntensity={1 - scrollProgress * 0.5}>
-      <ShapeComponent ref={meshRef} args={args as any} scale={scale} position={position}>
-        <MeshDistortMaterial
-          color={color}
-          attach="material"
-          distort={distort + scrollProgress * 0.2}
-          speed={2 + scrollProgress * 3}
-          roughness={0.2}
-          metalness={0.8}
-          transparent
-          opacity={0.7 - scrollProgress * 0.3}
-        />
-      </ShapeComponent>
+      <group ref={groupRef}>
+        <ShapeComponent 
+          ref={meshRef} 
+          args={args as any} 
+          scale={scale} 
+          position={position}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
+          onClick={handleClick}
+        >
+          <MeshDistortMaterial
+            color={isHovered ? '#ffffff' : color}
+            attach="material"
+            distort={isHovered ? distort * 1.5 : distort + scrollProgress * 0.2}
+            speed={isHovered ? 4 : 2 + scrollProgress * 3}
+            roughness={isHovered ? 0.1 : 0.2}
+            metalness={isHovered ? 0.9 : 0.8}
+            transparent
+            opacity={isHovered ? 0.9 : 0.7 - scrollProgress * 0.3}
+          />
+        </ShapeComponent>
+        
+        {/* Tooltip */}
+        {feature && showTooltip && scrollProgress < 0.3 && (
+          <Html
+            position={[position[0], position[1] + 1.2, position[2]]}
+            center
+            distanceFactor={6}
+            style={{
+              pointerEvents: 'none',
+              transition: 'all 0.2s ease-out',
+              opacity: showTooltip ? 1 : 0,
+              transform: showTooltip ? 'translateY(0)' : 'translateY(10px)'
+            }}
+          >
+            <div className="bg-background/95 backdrop-blur-md border border-primary/30 rounded-lg px-4 py-3 shadow-xl min-w-[180px] animate-fade-in">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">{feature.icon}</span>
+                <span className="font-semibold text-foreground text-sm">{feature.title}</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
+              <div className="mt-2 text-[10px] text-primary font-medium">Click to learn more →</div>
+            </div>
+          </Html>
+        )}
+      </group>
     </Float>
   );
 }
@@ -319,10 +432,12 @@ function MouseLight({ mousePosition }: { mousePosition: { x: number; y: number }
 // Scene wrapper that handles scroll and mouse
 function Scene({ 
   scrollProgress, 
-  mousePosition 
+  mousePosition,
+  onFeatureClick
 }: { 
   scrollProgress: number; 
-  mousePosition: { x: number; y: number } 
+  mousePosition: { x: number; y: number };
+  onFeatureClick: (feature: FeatureInfo) => void;
 }) {
   return (
     <>
@@ -334,14 +449,14 @@ function Scene({
 
       <CameraController scrollProgress={scrollProgress} mousePosition={mousePosition} />
 
-      {/* Floating geometric shapes */}
-      <FloatingShape position={[-3.5, 1.5, -1]} shape="icosahedron" color="#8b5cf6" speed={0.8} scale={0.6} distort={0.4} scrollProgress={scrollProgress} scrollIntensity={1.2} />
-      <FloatingShape position={[3.5, -1, 0]} shape="sphere" color="#06b6d4" speed={1.2} scale={0.5} distort={0.5} scrollProgress={scrollProgress} scrollIntensity={0.8} />
-      <FloatingShape position={[-2, -2, 1]} shape="torus" color="#d946ef" speed={0.6} scale={0.4} distort={0.2} scrollProgress={scrollProgress} scrollIntensity={1.5} />
-      <FloatingShape position={[2.5, 2, -2]} shape="box" color="#8b5cf6" speed={1} scale={0.4} distort={0.3} scrollProgress={scrollProgress} scrollIntensity={1.0} />
-      <FloatingShape position={[0, -2.5, -1]} shape="icosahedron" color="#06b6d4" speed={0.9} scale={0.35} distort={0.4} scrollProgress={scrollProgress} scrollIntensity={1.3} />
-      <FloatingShape position={[-4, 0, -2]} shape="sphere" color="#d946ef" speed={0.7} scale={0.3} distort={0.6} scrollProgress={scrollProgress} scrollIntensity={0.9} />
-      <FloatingShape position={[4, 1, -1]} shape="torus" color="#8b5cf6" speed={1.1} scale={0.35} distort={0.2} scrollProgress={scrollProgress} scrollIntensity={1.1} />
+      {/* Floating geometric shapes with feature tooltips */}
+      <FloatingShape position={[-3.5, 1.5, -1]} shape="icosahedron" color="#8b5cf6" speed={0.8} scale={0.6} distort={0.4} scrollProgress={scrollProgress} scrollIntensity={1.2} featureKey="ai-agents" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[3.5, -1, 0]} shape="sphere" color="#06b6d4" speed={1.2} scale={0.5} distort={0.5} scrollProgress={scrollProgress} scrollIntensity={0.8} featureKey="knowledge-base" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[-2, -2, 1]} shape="torus" color="#d946ef" speed={0.6} scale={0.4} distort={0.2} scrollProgress={scrollProgress} scrollIntensity={1.5} featureKey="workflows" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[2.5, 2, -2]} shape="box" color="#8b5cf6" speed={1} scale={0.4} distort={0.3} scrollProgress={scrollProgress} scrollIntensity={1.0} featureKey="analytics" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[0, -2.5, -1]} shape="icosahedron" color="#06b6d4" speed={0.9} scale={0.35} distort={0.4} scrollProgress={scrollProgress} scrollIntensity={1.3} featureKey="collaboration" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[-4, 0, -2]} shape="sphere" color="#d946ef" speed={0.7} scale={0.3} distort={0.6} scrollProgress={scrollProgress} scrollIntensity={0.9} featureKey="integrations" onShapeClick={onFeatureClick} />
+      <FloatingShape position={[4, 1, -1]} shape="torus" color="#8b5cf6" speed={1.1} scale={0.35} distort={0.2} scrollProgress={scrollProgress} scrollIntensity={1.1} featureKey="security" onShapeClick={onFeatureClick} />
 
       {/* Ambient elements */}
       <ParticleField count={300} scrollProgress={scrollProgress} />
@@ -355,17 +470,76 @@ function Scene({
 export function Hero3DScene() {
   const scrollProgress = useScrollProgress();
   const mousePosition = useMousePosition();
+  const [selectedFeature, setSelectedFeature] = useState<FeatureInfo | null>(null);
+
+  const handleFeatureClick = useCallback((feature: FeatureInfo) => {
+    setSelectedFeature(feature);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setSelectedFeature(null);
+  }, []);
 
   return (
-    <div className="absolute inset-0 z-0">
-      <Canvas
-        camera={{ position: [0, 0, 6], fov: 60 }}
-        style={{ background: 'transparent' }}
-        gl={{ alpha: true, antialias: true }}
-      >
-        <Scene scrollProgress={scrollProgress} mousePosition={mousePosition} />
-      </Canvas>
-    </div>
+    <>
+      <div className="absolute inset-0 z-0">
+        <Canvas
+          camera={{ position: [0, 0, 6], fov: 60 }}
+          style={{ background: 'transparent' }}
+          gl={{ alpha: true, antialias: true }}
+        >
+          <Scene 
+            scrollProgress={scrollProgress} 
+            mousePosition={mousePosition} 
+            onFeatureClick={handleFeatureClick}
+          />
+        </Canvas>
+      </div>
+
+      {/* Feature Modal */}
+      {selectedFeature && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+          onClick={closeModal}
+        >
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+          <div 
+            className="relative bg-card border border-primary/20 rounded-2xl p-8 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={closeModal}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+            
+            <div className="text-center">
+              <span className="text-5xl mb-4 block">{selectedFeature.icon}</span>
+              <h3 className="text-2xl font-bold text-foreground mb-3">{selectedFeature.title}</h3>
+              <p className="text-muted-foreground mb-6">{selectedFeature.description}</p>
+              
+              <div className="flex gap-3 justify-center">
+                <button 
+                  onClick={closeModal}
+                  className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                >
+                  Explore Feature
+                </button>
+                <button 
+                  onClick={closeModal}
+                  className="px-6 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
