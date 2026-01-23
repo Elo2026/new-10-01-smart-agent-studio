@@ -18,6 +18,16 @@ export const MissingEnvScreen: React.FC<MissingEnvScreenProps> = ({ missing }) =
           </li>
         ))}
       </ul>
+      <div className="mt-4 text-sm text-muted-foreground space-y-2">
+        <p>
+          In Lovable, open your project settings and add the values under Environment Variables.
+        </p>
+        <p>
+          For local development, copy <span className="font-mono">.env.example</span> to{" "}
+          <span className="font-mono">.env</span> and fill in your Supabase URL and publishable
+          key.
+        </p>
+      </div>
     </div>
   </div>
 );
