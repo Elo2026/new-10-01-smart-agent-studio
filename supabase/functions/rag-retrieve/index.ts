@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 interface RetrievalConfig {
   top_k: number;
@@ -111,7 +115,7 @@ Respond with valid JSON:
 
 // Keyword-based search (BM25-like scoring)
 async function keywordSearch(
-  supabase: any, 
+  supabase: SupabaseClient, 
   queries: string[], 
   folderIds: string[] | undefined,
   limit: number
@@ -184,7 +188,7 @@ async function keywordSearch(
 
 // Semantic tag-based search
 async function semanticTagSearch(
-  supabase: any,
+  supabase: SupabaseClient,
   queries: string[],
   entities: { name: string; type: string }[],
   folderIds: string[] | undefined,
@@ -247,7 +251,7 @@ async function semanticTagSearch(
 
 // Knowledge graph traversal for related chunks
 async function graphSearch(
-  supabase: any,
+  supabase: SupabaseClient,
   entities: { name: string; type: string }[],
   limit: number
 ): Promise<RetrievedChunk[]> {
@@ -267,7 +271,14 @@ async function graphSearch(
   }
 
   // Get unique chunk IDs
-  const chunkIds = [...new Set(graphData.map((g: any) => g.chunk_id).filter(Boolean))];
+  const chunkIds = [
+    ...new Set(
+      graphData
+        .filter(isRecord)
+        .map((g) => g.chunk_id)
+        .filter((id): id is string => typeof id === 'string')
+    ),
+  ];
   
   if (chunkIds.length === 0) return [];
 
@@ -279,22 +290,24 @@ async function graphSearch(
 
   if (chunkError) return [];
 
-  return (chunks || []).map((chunk: any) => ({
-    id: chunk.id,
-    content: chunk.content,
-    source_file: chunk.source_file,
+  if (!Array.isArray(chunks)) return [];
+
+  return chunks.filter(isRecord).map((chunk) => ({
+    id: String(chunk.id),
+    content: String(chunk.content),
+    source_file: String(chunk.source_file),
     relevance_score: 0.5, // Base score for graph-retrieved chunks
-    chunk_index: chunk.chunk_index,
-    document_context: chunk.document_context,
-    key_concepts: chunk.key_concepts || [],
-    semantic_tags: chunk.semantic_tags || [],
-    quality_score: chunk.quality_score || 0.5
+    chunk_index: Number(chunk.chunk_index ?? 0),
+    document_context: chunk.document_context ? String(chunk.document_context) : null,
+    key_concepts: Array.isArray(chunk.key_concepts) ? (chunk.key_concepts as string[]) : [],
+    semantic_tags: Array.isArray(chunk.semantic_tags) ? (chunk.semantic_tags as string[]) : [],
+    quality_score: typeof chunk.quality_score === 'number' ? chunk.quality_score : 0.5,
   }));
 }
 
 // Hybrid search combining multiple strategies
 async function hybridSearch(
-  supabase: any,
+  supabase: SupabaseClient,
   queryExpansion: QueryExpansion,
   config: RetrievalConfig
 ): Promise<RetrievedChunk[]> {
@@ -418,7 +431,7 @@ Only include the top ${topN} most relevant passages.`
 
 // Multi-hop retrieval for complex queries
 async function multiHopRetrieval(
-  supabase: any,
+  supabase: SupabaseClient,
   query: string,
   initialChunks: RetrievedChunk[],
   maxDepth: number,
