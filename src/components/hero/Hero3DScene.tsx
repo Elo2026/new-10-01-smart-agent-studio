@@ -1,6 +1,8 @@
 import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber';
-import { Float, MeshDistortMaterial, MeshWobbleMaterial, Sphere, Box, Torus, Icosahedron, Html } from '@react-three/drei';
+import { Float, MeshDistortMaterial, MeshWobbleMaterial, Sphere, Box, Torus, Icosahedron, Html, useProgress } from '@react-three/drei';
 import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
 
 // Hook to track scroll progress
@@ -59,48 +61,56 @@ function useMousePosition() {
   return mousePosition;
 }
 
-// Feature data for tooltips
+// Feature data for tooltips with routes
 interface FeatureInfo {
   title: string;
   description: string;
   icon: string;
+  route: string;
 }
 
 const featureData: Record<string, FeatureInfo> = {
   'ai-agents': {
     title: 'AI Agents',
     description: 'Intelligent autonomous agents that learn and adapt',
-    icon: '🤖'
+    icon: '🤖',
+    route: '/agents'
   },
   'knowledge-base': {
     title: 'Knowledge Base',
     description: 'RAG-powered document retrieval and analysis',
-    icon: '📚'
+    icon: '📚',
+    route: '/knowledge-base'
   },
   'workflows': {
     title: 'Workflows',
     description: 'Visual multi-agent orchestration system',
-    icon: '⚡'
+    icon: '⚡',
+    route: '/multi-agent-canvas'
   },
   'analytics': {
     title: 'Analytics',
     description: 'Real-time insights and performance metrics',
-    icon: '📊'
+    icon: '📊',
+    route: '/analytics'
   },
   'collaboration': {
     title: 'Collaboration',
     description: 'Team workspaces with real-time sync',
-    icon: '👥'
+    icon: '👥',
+    route: '/team'
   },
   'integrations': {
     title: 'Integrations',
     description: 'Connect with your favorite tools',
-    icon: '🔗'
+    icon: '🔗',
+    route: '/marketplace'
   },
   'security': {
     title: 'Security',
     description: 'Enterprise-grade data protection',
-    icon: '🔒'
+    icon: '🔒',
+    route: '/settings'
   }
 };
 
@@ -467,10 +477,99 @@ function Scene({
   );
 }
 
+// 3D Loading Screen Component
+function LoadingScreen({ progress }: { progress: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 1.05 }}
+      transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background"
+    >
+      {/* Loading Animation */}
+      <div className="relative w-32 h-32 mb-8">
+        {/* Outer ring */}
+        <motion.div
+          className="absolute inset-0 border-4 border-primary/20 rounded-full"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+        />
+        {/* Progress ring */}
+        <svg className="absolute inset-0 w-full h-full -rotate-90">
+          <circle
+            cx="64"
+            cy="64"
+            r="58"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="4"
+            strokeLinecap="round"
+            className="text-primary"
+            strokeDasharray={364}
+            strokeDashoffset={364 - (364 * progress) / 100}
+            style={{ transition: 'stroke-dashoffset 0.3s ease-out' }}
+          />
+        </svg>
+        {/* Center icon */}
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center"
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <div className="text-4xl">✨</div>
+        </motion.div>
+      </div>
+
+      {/* Progress text */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="text-center"
+      >
+        <div className="text-3xl font-bold text-foreground mb-2">
+          {Math.round(progress)}%
+        </div>
+        <p className="text-muted-foreground text-sm">Preparing your experience...</p>
+      </motion.div>
+
+      {/* Animated dots */}
+      <div className="flex gap-1 mt-6">
+        {[0, 1, 2].map((i) => (
+          <motion.div
+            key={i}
+            className="w-2 h-2 bg-primary rounded-full"
+            animate={{ y: [-4, 4, -4] }}
+            transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 export function Hero3DScene() {
   const scrollProgress = useScrollProgress();
   const mousePosition = useMousePosition();
+  const navigate = useNavigate();
   const [selectedFeature, setSelectedFeature] = useState<FeatureInfo | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
+
+  // Simulate loading progress (since we're not using useProgress outside Canvas)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLoadProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => setIsLoaded(true), 500);
+          return 100;
+        }
+        return prev + Math.random() * 15 + 5;
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleFeatureClick = useCallback((feature: FeatureInfo) => {
     setSelectedFeature(feature);
@@ -480,8 +579,19 @@ export function Hero3DScene() {
     setSelectedFeature(null);
   }, []);
 
+  const handleExploreFeature = useCallback(() => {
+    if (selectedFeature) {
+      navigate(selectedFeature.route);
+    }
+  }, [selectedFeature, navigate]);
+
   return (
     <>
+      {/* Loading Screen */}
+      <AnimatePresence>
+        {!isLoaded && <LoadingScreen progress={Math.min(loadProgress, 100)} />}
+      </AnimatePresence>
+
       <div className="absolute inset-0 z-0">
         <Canvas
           camera={{ position: [0, 0, 6], fov: 60 }}
@@ -497,48 +607,68 @@ export function Hero3DScene() {
       </div>
 
       {/* Feature Modal */}
-      {selectedFeature && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={closeModal}
-        >
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-          <div 
-            className="relative bg-card border border-primary/20 rounded-2xl p-8 max-w-md w-full shadow-2xl animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {selectedFeature && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={closeModal}
           >
-            <button 
-              onClick={closeModal}
-              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative bg-card border border-primary/20 rounded-2xl p-8 max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-            
-            <div className="text-center">
-              <span className="text-5xl mb-4 block">{selectedFeature.icon}</span>
-              <h3 className="text-2xl font-bold text-foreground mb-3">{selectedFeature.title}</h3>
-              <p className="text-muted-foreground mb-6">{selectedFeature.description}</p>
+              <button 
+                onClick={closeModal}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
               
-              <div className="flex gap-3 justify-center">
-                <button 
-                  onClick={closeModal}
-                  className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+              <div className="text-center">
+                <motion.span 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', delay: 0.1 }}
+                  className="text-5xl mb-4 block"
                 >
-                  Explore Feature
-                </button>
-                <button 
-                  onClick={closeModal}
-                  className="px-6 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors"
-                >
-                  Close
-                </button>
+                  {selectedFeature.icon}
+                </motion.span>
+                <h3 className="text-2xl font-bold text-foreground mb-3">{selectedFeature.title}</h3>
+                <p className="text-muted-foreground mb-6">{selectedFeature.description}</p>
+                
+                <div className="flex gap-3 justify-center">
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleExploreFeature}
+                    className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    Explore Feature
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={closeModal}
+                    className="px-6 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors"
+                  >
+                    Close
+                  </motion.button>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
