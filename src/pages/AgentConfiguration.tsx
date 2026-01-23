@@ -16,6 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ArrowLeft, 
+  ArrowDown,
+  ArrowUp,
+  CirclePlus,
   Save, 
   Bot, 
   Brain, 
@@ -33,6 +36,8 @@ import { KnowledgeFolderSelector } from '@/components/agent/KnowledgeFolderSelec
 import { ResponsePreviewPanel } from '@/components/agent/ResponsePreviewPanel';
 import { ConfigurationCompatibilityChecker } from '@/components/agent/ConfigurationCompatibilityChecker';
 import { AgentTestChatDialog } from '@/components/agent/AgentTestChatDialog';
+import { createAgentTask, normalizeAgentTasks } from '@/lib/agents/tasks';
+import type { AgentTask, TaskScheduleHint } from '@/lib/agents/tasks';
 import type { ResponseRules, ReworkSettings } from '@/types';
 
 type CoreModel = 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
@@ -59,6 +64,7 @@ interface AgentFormData {
   };
   response_rules: ResponseRules;
   rework_settings: ReworkSettings;
+  agent_tasks: AgentTask[];
 }
 
 const defaultFormData: AgentFormData = {
@@ -95,6 +101,7 @@ const defaultFormData: AgentFormData = {
     minimum_score_threshold: 70,
     auto_correct: true,
   },
+  agent_tasks: [],
 };
 
 export const AgentConfiguration: React.FC = () => {
@@ -108,6 +115,20 @@ export const AgentConfiguration: React.FC = () => {
   const [activePreset, setActivePreset] = useState<'balanced' | 'knowledge' | 'creative'>('balanced');
 
   const isNew = id === 'new';
+
+  const asRecord = (value: unknown): Record<string, unknown> => {
+    if (typeof value === 'object' && value !== null) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  };
+
+  const getBoolean = (value: unknown, fallback: boolean) =>
+    typeof value === 'boolean' ? value : fallback;
+  const getNumber = (value: unknown, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const getString = (value: unknown, fallback: string) =>
+    typeof value === 'string' ? value : fallback;
 
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ['agent', id],
@@ -143,8 +164,8 @@ export const AgentConfiguration: React.FC = () => {
 
   useEffect(() => {
     if (agent) {
-      const ragPolicy = agent.rag_policy as any || {};
-      const responseRules = agent.response_rules as any || {};
+      const ragPolicy = asRecord(agent.rag_policy);
+      const responseRules = asRecord(agent.response_rules);
       setFormData({
         display_name: agent.display_name || '',
         user_defined_name: agent.user_defined_name || '',
@@ -159,19 +180,19 @@ export const AgentConfiguration: React.FC = () => {
         active_until: agent.active_until || null,
         active_days: agent.active_days || [0, 1, 2, 3, 4, 5, 6],
         rag_policy: {
-          knowledge_base_ratio: ragPolicy.knowledge_base_ratio ?? 0.7,
-          web_verification_ratio: ragPolicy.web_verification_ratio ?? 0.3,
-          hallucination_tolerance: ragPolicy.hallucination_tolerance || 'very_low',
-          creativity_level: ragPolicy.creativity_level || 'very_low',
+          knowledge_base_ratio: getNumber(ragPolicy.knowledge_base_ratio, 0.7),
+          web_verification_ratio: getNumber(ragPolicy.web_verification_ratio, 0.3),
+          hallucination_tolerance: getString(ragPolicy.hallucination_tolerance, 'very_low'),
+          creativity_level: getString(ragPolicy.creativity_level, 'very_low') as CreativityLevel,
         },
         response_rules: {
-          step_by_step: responseRules.step_by_step ?? true,
-          cite_if_possible: responseRules.cite_if_possible ?? true,
-          refuse_if_uncertain: responseRules.refuse_if_uncertain ?? true,
-          include_confidence_scores: responseRules.include_confidence_scores ?? false,
-          use_bullet_points: responseRules.use_bullet_points ?? false,
-          summarize_at_end: responseRules.summarize_at_end ?? false,
-          custom_response_template: responseRules.custom_response_template ?? null,
+          step_by_step: getBoolean(responseRules.step_by_step, true),
+          cite_if_possible: getBoolean(responseRules.cite_if_possible, true),
+          refuse_if_uncertain: getBoolean(responseRules.refuse_if_uncertain, true),
+          include_confidence_scores: getBoolean(responseRules.include_confidence_scores, false),
+          use_bullet_points: getBoolean(responseRules.use_bullet_points, false),
+          summarize_at_end: getBoolean(responseRules.summarize_at_end, false),
+          custom_response_template: getString(responseRules.custom_response_template, '') || null,
         },
         rework_settings: {
           enabled: true,
@@ -179,9 +200,49 @@ export const AgentConfiguration: React.FC = () => {
           minimum_score_threshold: 70,
           auto_correct: true,
         },
+        agent_tasks: normalizeAgentTasks(agent.agent_tasks as AgentTask[] | null),
       });
     }
   }, [agent]);
+
+  const updateTaskOrder = (tasks: AgentTask[]) => {
+    return tasks.map((task, index) => ({
+      ...task,
+      order: index + 1,
+    }));
+  };
+
+  const handleAddTask = () => {
+    setFormData((prev) => ({
+      ...prev,
+      agent_tasks: updateTaskOrder([...prev.agent_tasks, createAgentTask()]),
+    }));
+  };
+
+  const handleMoveTask = (taskId: string, direction: 'up' | 'down') => {
+    setFormData((prev) => {
+      const index = prev.agent_tasks.findIndex((task) => task.id === taskId);
+      if (index < 0) return prev;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.agent_tasks.length) return prev;
+      const updated = [...prev.agent_tasks];
+      const [moved] = updated.splice(index, 1);
+      updated.splice(targetIndex, 0, moved);
+      return {
+        ...prev,
+        agent_tasks: updateTaskOrder(updated),
+      };
+    });
+  };
+
+  const handleTaskChange = (taskId: string, updates: Partial<AgentTask>) => {
+    setFormData((prev) => ({
+      ...prev,
+      agent_tasks: updateTaskOrder(
+        prev.agent_tasks.map((task) => (task.id === taskId ? { ...task, ...updates } : task))
+      ),
+    }));
+  };
 
   const applyPreset = (preset: 'balanced' | 'knowledge' | 'creative') => {
     setActivePreset(preset);
@@ -237,7 +298,7 @@ export const AgentConfiguration: React.FC = () => {
         return;
       }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         display_name: formData.display_name,
         user_defined_name: formData.user_defined_name || formData.display_name,
         role_description: formData.role_description || null,
@@ -251,7 +312,8 @@ export const AgentConfiguration: React.FC = () => {
         active_until: formData.active_until,
         active_days: formData.active_days,
         rag_policy: formData.rag_policy,
-        response_rules: formData.response_rules as unknown as Record<string, unknown>,
+        response_rules: formData.response_rules as Record<string, unknown>,
+        agent_tasks: formData.agent_tasks as Record<string, unknown>[],
       };
 
       if (isNew) {
@@ -260,19 +322,23 @@ export const AgentConfiguration: React.FC = () => {
           created_by: userData.user.id,
           workspace_id: currentWorkspace?.id || null,
         };
-        const { error } = await supabase.from('ai_profiles').insert([insertPayload] as any);
+        const { error } = await supabase.from('ai_profiles').insert([insertPayload] as Record<string, unknown>[]);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent created successfully' });
       } else {
-        const { error } = await supabase.from('ai_profiles').update(payload as any).eq('id', id);
+        const { error } = await supabase.from('ai_profiles').update(payload).eq('id', id);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent updated successfully' });
       }
 
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/agents');
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save agent',
+        variant: 'destructive'
+      });
     } finally {
       setLoading(false);
     }
@@ -289,6 +355,7 @@ export const AgentConfiguration: React.FC = () => {
       allowed_folders: formData.allowed_folders,
       rag_policy: formData.rag_policy,
       response_rules: formData.response_rules,
+      agent_tasks: formData.agent_tasks,
       exportedAt: new Date().toISOString(),
     };
 
@@ -312,6 +379,14 @@ export const AgentConfiguration: React.FC = () => {
     core_analyst: { icon: <Brain className="h-5 w-5" />, label: 'CORE_ANALYST', category: 'Analysis' },
     core_reviewer: { icon: <FileText className="h-5 w-5" />, label: 'CORE_REVIEWER', category: 'Review' },
     core_synthesizer: { icon: <Sparkles className="h-5 w-5" />, label: 'CORE_SYNTHESIZER', category: 'Synthesis' },
+  };
+  const scheduleHintLabels: Record<TaskScheduleHint, string> = {
+    on_demand: 'On Demand',
+    hourly: 'Hourly',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    event_driven: 'Event Driven',
   };
 
 
@@ -530,6 +605,114 @@ export const AgentConfiguration: React.FC = () => {
           onFoldersChange={(folders) => setFormData({ ...formData, allowed_folders: folders })}
           workspaceId={currentWorkspace?.id}
         />
+
+        {/* Tasks Section */}
+        <Card className="cyber-border lg:col-span-2">
+          <CardHeader className="border-b border-border/50 flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Bot className="h-5 w-5 text-primary" />
+              TASKS
+            </CardTitle>
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleAddTask}>
+              <CirclePlus className="h-4 w-4" />
+              Add Task
+            </Button>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-6">
+            {formData.agent_tasks.length === 0 ? (
+              <div className="text-sm text-muted-foreground border border-dashed border-border/60 rounded-lg p-4">
+                No tasks yet. Add a task to define the agent's workload and scheduling hints.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {formData.agent_tasks.map((task, index) => (
+                  <div key={task.id} className="border border-border/50 rounded-lg p-4 space-y-4 bg-secondary/20">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
+                        <Badge variant="outline">Task {index + 1}</Badge>
+                        <span>Order {task.order}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={index === 0}
+                          onClick={() => handleMoveTask(task.id, 'up')}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={index === formData.agent_tasks.length - 1}
+                          onClick={() => handleMoveTask(task.id, 'down')}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={task.enabled}
+                            onCheckedChange={(val) => handleTaskChange(task.id, { enabled: val })}
+                          />
+                          <span className="text-xs text-muted-foreground uppercase">Enabled</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Title</Label>
+                        <Input
+                          value={task.title}
+                          onChange={(e) => handleTaskChange(task.id, { title: e.target.value })}
+                          placeholder="Task title"
+                          className="bg-secondary/50 border-border/50"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Schedule Hint</Label>
+                        <Select
+                          value={task.scheduleHint}
+                          onValueChange={(value) => handleTaskChange(task.id, { scheduleHint: value as TaskScheduleHint })}
+                        >
+                          <SelectTrigger className="bg-secondary/50 border-border/50">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(scheduleHintLabels).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Description</Label>
+                        <Textarea
+                          value={task.description}
+                          onChange={(e) => handleTaskChange(task.id, { description: e.target.value })}
+                          placeholder="Describe what this task should accomplish..."
+                          rows={3}
+                          className="bg-secondary/50 border-border/50 resize-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Core Purpose</Label>
+                        <Input
+                          value={task.corePurpose}
+                          readOnly
+                          className="bg-secondary/50 border-border/50 text-muted-foreground"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* RAG Governance Policy Section */}
         <Card className="cyber-border lg:col-span-2">

@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 // =============================================================================
 // AGENTIC RAG 2.0 - Advanced AI Features Implementation
@@ -22,8 +26,8 @@ interface ReActStep {
   step_type: 'thought' | 'action' | 'observation' | 'answer';
   content: string;
   tool_name?: string;
-  tool_input?: any;
-  tool_output?: any;
+  tool_input?: Record<string, unknown>;
+  tool_output?: unknown;
   confidence?: number;
   latency_ms?: number;
 }
@@ -33,7 +37,7 @@ interface AgentTool {
   display_name: string;
   description: string;
   tool_type: string;
-  config: any;
+  config: Record<string, unknown>;
 }
 
 interface ReworkSettings {
@@ -53,13 +57,39 @@ interface ValidationScore {
 
 type QueryComplexity = 'simple' | 'moderate' | 'complex' | 'conversational';
 
+interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+interface AgentConfig {
+  persona?: string;
+  role_description?: string;
+  intro_sentence?: string;
+  response_rules?: Record<string, unknown>;
+  custom_response_template?: string | null;
+}
+
+interface AgentMemoryItem {
+  memory_type?: string;
+  memory_key?: string;
+  memory_value?: unknown;
+}
+
+interface RetrievedChunk {
+  id: string;
+  source_file: string;
+  content: string;
+  relevance_score?: number;
+}
+
 // =============================================================================
 // QUERY COMPLEXITY ANALYZER - Adaptive Retrieval Strategy
 // =============================================================================
 async function analyzeQueryComplexity(
   query: string,
-  conversationHistory: any[],
-  supabase: any,
+  conversationHistory: ChatMessage[],
+  supabase: SupabaseClient,
   userId: string | null = null
 ): Promise<{ complexity: QueryComplexity; strategy: string; reasoning: string }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -176,8 +206,8 @@ Last 2 messages context: ${conversationHistory.slice(-2).map(m => m.content?.sub
 async function retrieveAgentMemory(
   userId: string,
   agentId: string | null,
-  supabase: any
-): Promise<any[]> {
+  supabase: SupabaseClient
+): Promise<AgentMemoryItem[]> {
   try {
     let query = supabase
       .from('agent_memory')
@@ -195,7 +225,10 @@ async function retrieveAgentMemory(
     
     // Update access timestamps
     if (data && data.length > 0) {
-      const ids = data.map((m: any) => m.id);
+      const ids = data
+        .filter(isRecord)
+        .map((memory) => memory.id)
+        .filter((id): id is string => typeof id === 'string');
       await supabase
         .from('agent_memory')
         .update({ 
@@ -205,7 +238,7 @@ async function retrieveAgentMemory(
         .in('id', ids);
     }
 
-    return data || [];
+    return Array.isArray(data) ? (data as AgentMemoryItem[]) : [];
   } catch (error) {
     console.error("Memory retrieval error:", error);
     return [];
@@ -218,9 +251,9 @@ async function updateAgentMemory(
   workspaceId: string | null,
   memoryType: string,
   memoryKey: string,
-  memoryValue: any,
+  memoryValue: unknown,
   conversationId: string | null,
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<void> {
   try {
     await supabase
@@ -251,7 +284,7 @@ async function executeKnowledgeSearch(
   folderIds: string[] | undefined,
   supabaseUrl: string,
   topK: number = 5
-): Promise<any[]> {
+): Promise<RetrievedChunk[]> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/rag-retrieve`, {
       method: "POST",
@@ -274,7 +307,7 @@ async function executeKnowledgeSearch(
 
     if (response.ok) {
       const data = await response.json();
-      return data.chunks || [];
+      return Array.isArray(data?.chunks) ? (data.chunks as RetrievedChunk[]) : [];
     }
   } catch (error) {
     console.error("Knowledge search error:", error);
@@ -424,7 +457,7 @@ function safeEvaluate(expr: string): number {
 }
 
 async function executeCompare(
-  chunks: any[],
+  chunks: RetrievedChunk[],
   aspect: string
 ): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -468,14 +501,14 @@ async function executeReActLoop(
   query: string,
   tools: AgentTool[],
   folderIds: string[] | undefined,
-  agentConfig: any,
-  conversationHistory: any[],
-  userMemory: any[],
+  agentConfig: AgentConfig,
+  conversationHistory: ChatMessage[],
+  userMemory: AgentMemoryItem[],
   supabaseUrl: string,
-  supabase: any,
+  supabase: SupabaseClient,
   conversationId: string | null,
   maxSteps: number = 5
-): Promise<{ steps: ReActStep[]; finalAnswer: string; chunks: any[]; citations: Citation[] }> {
+): Promise<{ steps: ReActStep[]; finalAnswer: string; chunks: RetrievedChunk[]; citations: Citation[] }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   
   if (!LOVABLE_API_KEY) {
@@ -488,7 +521,7 @@ async function executeReActLoop(
   }
 
   const steps: ReActStep[] = [];
-  let allChunks: any[] = [];
+  let allChunks: RetrievedChunk[] = [];
   const citations: Citation[] = [];
 
   // Build tool descriptions for the agent
@@ -625,13 +658,14 @@ ${memoryContext}${responseRulesSection}`;
 
       if (actionMatch) {
         const toolName = actionMatch[1].toLowerCase();
-        let toolInput: any = {};
+        let toolInput: Record<string, unknown> = {};
         
         try {
           const inputStr = inputMatch?.[1]?.trim() || "{}";
           // Try to parse as JSON, or use as query string
           if (inputStr.startsWith('{')) {
-            toolInput = JSON.parse(inputStr);
+            const parsed = JSON.parse(inputStr) as unknown;
+            toolInput = isRecord(parsed) ? parsed : {};
           } else {
             toolInput = { query: inputStr };
           }
@@ -649,55 +683,75 @@ ${memoryContext}${responseRulesSection}`;
 
         // Execute the tool
         const toolStart = Date.now();
-        let toolOutput: any = null;
+        let toolOutput: unknown = null;
+        const toolQuery = typeof toolInput.query === 'string' ? toolInput.query : query;
+        const toolTopK = typeof toolInput.top_k === 'number' ? toolInput.top_k : 5;
 
         switch (toolName) {
-          case 'knowledge_search':
-            const searchQuery = toolInput.query || query;
-            const chunks = await executeKnowledgeSearch(searchQuery, folderIds, supabaseUrl, toolInput.top_k || 5);
+          case 'knowledge_search': {
+            const chunks = await executeKnowledgeSearch(toolQuery, folderIds, supabaseUrl, toolTopK);
             allChunks = [...allChunks, ...chunks];
-            toolOutput = chunks.map((c: any, i: number) => ({
+            toolOutput = chunks.map((chunk, i) => ({
               index: i + 1,
-              source: c.source_file,
-              content: c.content.substring(0, 500),
-              relevance: c.relevance_score || 0.5
+              source: chunk.source_file,
+              content: chunk.content.substring(0, 500),
+              relevance: chunk.relevance_score || 0.5
             }));
-            
+
             // Build citations
-            chunks.forEach((c: any, i: number) => {
+            chunks.forEach((chunk) => {
               citations.push({
-                chunk_id: c.id,
-                source_file: c.source_file,
-                citation_text: c.content.substring(0, 200),
-                confidence_score: c.relevance_score || 0.5
+                chunk_id: chunk.id,
+                source_file: chunk.source_file,
+                citation_text: chunk.content.substring(0, 200),
+                confidence_score: chunk.relevance_score || 0.5
               });
             });
             break;
+          }
 
           case 'summarizer':
-          case 'summarize':
-            const summaryContent = toolInput.content || allChunks.map(c => c.content).join('\n\n');
-            toolOutput = await executeSummarize(summaryContent, toolInput.max_length || 500);
+          case 'summarize': {
+            const summaryContent =
+              typeof toolInput.content === 'string'
+                ? toolInput.content
+                : allChunks.map(c => c.content).join('\n\n');
+            const maxLength = typeof toolInput.max_length === 'number' ? toolInput.max_length : 500;
+            toolOutput = await executeSummarize(summaryContent, maxLength);
             break;
+          }
 
           case 'calculator':
-          case 'calculate':
-            toolOutput = await executeCalculate(toolInput.expression || toolInput.query || '');
+          case 'calculate': {
+            const expression =
+              typeof toolInput.expression === 'string'
+                ? toolInput.expression
+                : typeof toolInput.query === 'string'
+                  ? toolInput.query
+                  : '';
+            toolOutput = await executeCalculate(expression);
             break;
+          }
 
           case 'comparator':
-          case 'compare':
-            toolOutput = await executeCompare(allChunks, toolInput.aspect || '');
+          case 'compare': {
+            const aspect = typeof toolInput.aspect === 'string' ? toolInput.aspect : '';
+            toolOutput = await executeCompare(allChunks, aspect);
             break;
+          }
 
           case 'analyzer':
-          case 'analyze':
+          case 'analyze': {
             // Deep analysis uses more chunks and detailed prompting
             if (allChunks.length === 0) {
               allChunks = await executeKnowledgeSearch(query, folderIds, supabaseUrl, 10);
             }
-            toolOutput = `Retrieved ${allChunks.length} documents for deep analysis. Key sources: ${allChunks.slice(0, 3).map(c => c.source_file).join(', ')}`;
+            toolOutput = `Retrieved ${allChunks.length} documents for deep analysis. Key sources: ${allChunks
+              .slice(0, 3)
+              .map(c => c.source_file)
+              .join(', ')}`;
             break;
+          }
 
           default:
             toolOutput = `Unknown tool: ${toolName}`;
@@ -788,15 +842,15 @@ ${memoryContext}${responseRulesSection}`;
 // LOGGING HELPERS
 // =============================================================================
 async function logReasoningStep(
-  supabase: any,
+  supabase: SupabaseClient,
   conversationId: string | null,
   messageId: string | null,
   stepNumber: number,
   stepType: string,
   content: string,
   toolName: string | null,
-  toolInput: any,
-  toolOutput: any,
+  toolInput: Record<string, unknown> | null,
+  toolOutput: unknown,
   confidence: number | null,
   latencyMs: number
 ): Promise<void> {
@@ -819,7 +873,7 @@ async function logReasoningStep(
 }
 
 async function updateStrategyMetrics(
-  supabase: any,
+  supabase: SupabaseClient,
   workspaceId: string | null,
   strategyName: string,
   complexity: QueryComplexity,
@@ -875,7 +929,7 @@ async function updateStrategyMetrics(
 // =============================================================================
 async function detectHallucinations(
   response: string,
-  chunks: any[],
+  chunks: RetrievedChunk[],
   query: string
 ): Promise<{ detected: boolean; details: { claim: string; issue: string }[]; confidence: number }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -954,7 +1008,7 @@ Check each factual claim in the response against the sources.`
 // =============================================================================
 function validateResponseCompliance(
   response: string,
-  responseRules: any,
+  responseRules: Record<string, unknown> | null,
   customTemplate: string | null
 ): ValidationScore {
   const issues: { type: string; severity: string; message: string }[] = [];
@@ -1053,10 +1107,10 @@ function validateResponseCompliance(
 async function reworkResponse(
   originalResponse: string,
   validationScore: ValidationScore,
-  responseRules: any,
+  responseRules: Record<string, unknown> | null,
   customTemplate: string | null,
   systemPrompt: string,
-  messages: any[],
+  messages: ChatMessage[],
   maxRetries: number
 ): Promise<{ response: string; attempts: number; finalScore: ValidationScore }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -1144,7 +1198,7 @@ async function extractMemoryFromConversation(
   agentId: string | null,
   workspaceId: string | null,
   conversationId: string | null,
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<void> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return;
@@ -1410,7 +1464,7 @@ serve(async (req) => {
     }
 
     // Step 2: Retrieve agent memory
-    let userMemory: any[] = [];
+    let userMemory: AgentMemoryItem[] = [];
     if (enable_memory && user_id) {
       userMemory = await retrieveAgentMemory(user_id, agentConfig?.agent_id || null, supabase);
       console.log(`Retrieved ${userMemory.length} memory items`);
@@ -1428,7 +1482,7 @@ serve(async (req) => {
     // Step 4: Execute based on strategy
     let response = "";
     let citations: Citation[] = [];
-    let chunks: any[] = [];
+    let chunks: RetrievedChunk[] = [];
     let reasoningSteps: ReActStep[] = [];
 
     if (enable_agentic && (strategy === 'agentic_full' || complexity === 'complex')) {
@@ -1577,7 +1631,11 @@ serve(async (req) => {
     }
 
     // Step 6: Hallucination detection
-    let hallucinationCheck = { detected: false, details: [] as any[], confidence: 0.5 };
+    let hallucinationCheck: { detected: boolean; details: { claim: string; issue: string }[]; confidence: number } = {
+      detected: false,
+      details: [],
+      confidence: 0.5,
+    };
     if (enable_hallucination_check && chunks.length > 0) {
       hallucinationCheck = await detectHallucinations(response, chunks, userMessage);
       if (hallucinationCheck.detected) {
