@@ -1,5 +1,4 @@
 import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
 import "./index.css";
 import { MissingEnvScreen } from "./components/system/MissingEnvScreen.tsx";
 
@@ -12,6 +11,12 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
-createRoot(rootElement).render(
-  missingEnvKeys.length > 0 ? <MissingEnvScreen missing={missingEnvKeys} /> : <App />
-);
+const root = createRoot(rootElement);
+
+if (missingEnvKeys.length > 0) {
+  root.render(<MissingEnvScreen missing={missingEnvKeys} />);
+} else {
+  import("./App").then(({ default: App }) => {
+    root.render(<App />);
+  });
+}
