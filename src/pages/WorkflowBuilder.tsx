@@ -92,6 +92,13 @@ export const WorkflowBuilder: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+
+  const getFunctionErrorMessage = (status: number, fallback: string) => {
+    if (status === 401) return 'Please sign in to use the workflow builder.';
+    if (status === 403) return 'You do not have permission to access this resource.';
+    if (status >= 500) return 'The server encountered an error. Please try again soon.';
+    return fallback;
+  };
   const [generatedWorkflow, setGeneratedWorkflow] = useState<WorkflowResult | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -159,7 +166,7 @@ export const WorkflowBuilder: React.FC = () => {
         if (response.status === 402) {
           throw new Error('Usage limit reached. Please add credits.');
         }
-        throw new Error('Failed to get response');
+        throw new Error(getFunctionErrorMessage(response.status, 'Failed to get response'));
       }
 
       const reader = response.body?.getReader();
