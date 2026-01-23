@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, MeshWobbleMaterial, Sphere, Box, Torus, Icosahedron } from '@react-three/drei';
-import { useRef, useMemo, useEffect, useState } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
 // Hook to track scroll progress
@@ -21,6 +21,42 @@ function useScrollProgress() {
   }, []);
 
   return scrollProgress;
+}
+
+// Hook to track mouse position (normalized -1 to 1)
+function useMousePosition() {
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const targetPosition = useRef({ x: 0, y: 0 });
+
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    // Normalize mouse position to -1 to 1
+    targetPosition.current = {
+      x: (event.clientX / window.innerWidth) * 2 - 1,
+      y: -(event.clientY / window.innerHeight) * 2 + 1
+    };
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    
+    // Smooth interpolation loop
+    let animationId: number;
+    const animate = () => {
+      setMousePosition(prev => ({
+        x: prev.x + (targetPosition.current.x - prev.x) * 0.08,
+        y: prev.y + (targetPosition.current.y - prev.y) * 0.08
+      }));
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      cancelAnimationFrame(animationId);
+    };
+  }, [handleMouseMove]);
+
+  return mousePosition;
 }
 
 // Floating geometric shape with scroll interaction
@@ -219,30 +255,84 @@ function GlowingCore({ scrollProgress = 0 }) {
   );
 }
 
-// Camera controller for scroll-based movement
-function CameraController({ scrollProgress = 0 }) {
+// Camera controller for scroll and mouse-based movement
+function CameraController({ 
+  scrollProgress = 0, 
+  mousePosition = { x: 0, y: 0 } 
+}: { 
+  scrollProgress?: number; 
+  mousePosition?: { x: number; y: number } 
+}) {
   const { camera } = useThree();
+  const smoothedMouse = useRef({ x: 0, y: 0 });
   
   useFrame(() => {
-    // Move camera based on scroll
-    camera.position.z = 6 + scrollProgress * 2;
-    camera.position.y = scrollProgress * -1;
-    camera.lookAt(0, scrollProgress * -0.5, 0);
+    // Smooth mouse following with easing
+    smoothedMouse.current.x += (mousePosition.x - smoothedMouse.current.x) * 0.05;
+    smoothedMouse.current.y += (mousePosition.y - smoothedMouse.current.y) * 0.05;
+    
+    // Base camera position from scroll
+    const baseZ = 6 + scrollProgress * 2;
+    const baseY = scrollProgress * -1;
+    
+    // Add mouse influence (reduced when scrolling)
+    const mouseInfluence = 1 - scrollProgress * 0.7;
+    const mouseOffsetX = smoothedMouse.current.x * 1.5 * mouseInfluence;
+    const mouseOffsetY = smoothedMouse.current.y * 0.8 * mouseInfluence;
+    
+    // Apply camera position
+    camera.position.x = mouseOffsetX;
+    camera.position.y = baseY + mouseOffsetY;
+    camera.position.z = baseZ;
+    
+    // Look at point follows mouse subtly
+    const lookAtX = smoothedMouse.current.x * 0.5 * mouseInfluence;
+    const lookAtY = scrollProgress * -0.5 + smoothedMouse.current.y * 0.3 * mouseInfluence;
+    camera.lookAt(lookAtX, lookAtY, 0);
   });
   
   return null;
 }
 
-// Scene wrapper that handles scroll
-function Scene({ scrollProgress }: { scrollProgress: number }) {
+// Mouse-reactive light that follows cursor
+function MouseLight({ mousePosition }: { mousePosition: { x: number; y: number } }) {
+  const lightRef = useRef<THREE.PointLight>(null);
+  
+  useFrame(() => {
+    if (lightRef.current) {
+      lightRef.current.position.x = mousePosition.x * 5;
+      lightRef.current.position.y = mousePosition.y * 3;
+    }
+  });
+  
+  return (
+    <pointLight 
+      ref={lightRef} 
+      position={[0, 0, 3]} 
+      intensity={0.8} 
+      color="#a855f7" 
+      distance={15}
+    />
+  );
+}
+
+// Scene wrapper that handles scroll and mouse
+function Scene({ 
+  scrollProgress, 
+  mousePosition 
+}: { 
+  scrollProgress: number; 
+  mousePosition: { x: number; y: number } 
+}) {
   return (
     <>
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1} color="#ffffff" />
       <pointLight position={[-10, -10, -5]} intensity={0.5} color="#8b5cf6" />
       <pointLight position={[10, -10, 5]} intensity={0.5} color="#06b6d4" />
+      <MouseLight mousePosition={mousePosition} />
 
-      <CameraController scrollProgress={scrollProgress} />
+      <CameraController scrollProgress={scrollProgress} mousePosition={mousePosition} />
 
       {/* Floating geometric shapes */}
       <FloatingShape position={[-3.5, 1.5, -1]} shape="icosahedron" color="#8b5cf6" speed={0.8} scale={0.6} distort={0.4} scrollProgress={scrollProgress} scrollIntensity={1.2} />
@@ -264,6 +354,7 @@ function Scene({ scrollProgress }: { scrollProgress: number }) {
 
 export function Hero3DScene() {
   const scrollProgress = useScrollProgress();
+  const mousePosition = useMousePosition();
 
   return (
     <div className="absolute inset-0 z-0">
@@ -272,7 +363,7 @@ export function Hero3DScene() {
         style={{ background: 'transparent' }}
         gl={{ alpha: true, antialias: true }}
       >
-        <Scene scrollProgress={scrollProgress} />
+        <Scene scrollProgress={scrollProgress} mousePosition={mousePosition} />
       </Canvas>
     </div>
   );
