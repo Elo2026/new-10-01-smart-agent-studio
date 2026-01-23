@@ -50,8 +50,12 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
       setFormData({ name: '', description: '', execution_mode: 'sequential' });
       onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create workflow',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
