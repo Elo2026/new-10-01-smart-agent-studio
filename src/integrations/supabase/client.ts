@@ -5,14 +5,32 @@ import { getSupabasePublishableKey, getSupabaseUrl } from '@/lib/env';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_PUBLISHABLE_KEY = getSupabasePublishableKey();
+const SUPABASE_PLACEHOLDER_URL = 'https://invalid.supabase.co';
+const SUPABASE_PLACEHOLDER_KEY = 'invalid-anon-key';
+const hasValidConfig = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+const storage =
+  typeof window !== 'undefined' && typeof localStorage !== 'undefined'
+    ? localStorage
+    : undefined;
+
+if (!hasValidConfig) {
+  console.warn(
+    'Supabase env vars are missing. Falling back to placeholder client until env is configured.'
+  );
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
+export const supabase = createClient<Database>(
+  hasValidConfig ? SUPABASE_URL : SUPABASE_PLACEHOLDER_URL,
+  hasValidConfig ? SUPABASE_PUBLISHABLE_KEY : SUPABASE_PLACEHOLDER_KEY,
+  {
+    auth: {
+      storage,
+      persistSession: Boolean(storage),
+      autoRefreshToken: Boolean(storage),
+    },
   }
+);
 });
