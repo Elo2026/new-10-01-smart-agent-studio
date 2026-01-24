@@ -76,7 +76,7 @@ export const WorkflowSelector: React.FC<WorkflowSelectorProps> = ({ onCreateNew 
         agent_nodes: workflow.agent_nodes,
         connections: workflow.connections,
         created_by: user.user.id,
-      })
+      } as never)
       .select()
       .single();
 

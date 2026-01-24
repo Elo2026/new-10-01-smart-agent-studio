@@ -200,7 +200,7 @@ export const AgentConfiguration: React.FC = () => {
           minimum_score_threshold: 70,
           auto_correct: true,
         },
-        agent_tasks: normalizeAgentTasks(agent.agent_tasks as AgentTask[] | null),
+        agent_tasks: normalizeAgentTasks((asRecord(agent).agent_tasks as AgentTask[] | null) ?? null),
       });
     }
   }, [agent]);
@@ -311,9 +311,8 @@ export const AgentConfiguration: React.FC = () => {
         active_from: formData.active_from,
         active_until: formData.active_until,
         active_days: formData.active_days,
-        rag_policy: formData.rag_policy,
-        response_rules: formData.response_rules as Record<string, unknown>,
-        agent_tasks: formData.agent_tasks as Record<string, unknown>[],
+        rag_policy: formData.rag_policy as unknown,
+        response_rules: formData.response_rules as unknown,
       };
 
       if (isNew) {
@@ -322,7 +321,7 @@ export const AgentConfiguration: React.FC = () => {
           created_by: userData.user.id,
           workspace_id: currentWorkspace?.id || null,
         };
-        const { error } = await supabase.from('ai_profiles').insert([insertPayload] as Record<string, unknown>[]);
+        const { error } = await supabase.from('ai_profiles').insert(insertPayload as never);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent created successfully' });
       } else {
