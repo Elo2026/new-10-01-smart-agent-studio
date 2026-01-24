@@ -174,14 +174,16 @@ Last 2 messages context: ${conversationHistory.slice(-2).map(m => m.content?.sub
           const parsed = JSON.parse(jsonMatch[0]);
           
           // Cache the result with user_id for RLS compliance
-          await supabase.from('query_complexity_cache').insert({
-            query_hash: hashHex,
-            original_query: query.substring(0, 500),
-            complexity: parsed.complexity,
-            recommended_strategy: parsed.strategy,
-            analysis_details: parsed.indicators || {},
-            user_id: userId
-          }).catch(() => {}); // Ignore cache errors
+          try {
+            await supabase.from('query_complexity_cache').insert({
+              query_hash: hashHex,
+              original_query: query.substring(0, 500),
+              complexity: parsed.complexity,
+              recommended_strategy: parsed.strategy,
+              analysis_details: parsed.indicators || {},
+              user_id: userId
+            });
+          } catch { /* Ignore cache errors */ }
 
           return {
             complexity: parsed.complexity || 'moderate',
@@ -229,11 +231,12 @@ async function retrieveAgentMemory(
         .filter(isRecord)
         .map((memory) => memory.id)
         .filter((id): id is string => typeof id === 'string');
+      // Note: Supabase JS client doesn't support raw SQL expressions in updates
+      // We just update last_accessed; access_count would need a DB function
       await supabase
         .from('agent_memory')
         .update({ 
-          last_accessed: new Date().toISOString(),
-          access_count: supabase.raw('access_count + 1')
+          last_accessed: new Date().toISOString()
         })
         .in('id', ids);
     }
