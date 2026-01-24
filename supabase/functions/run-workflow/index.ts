@@ -105,6 +105,7 @@ serve(async (req) => {
     console.log(`Created workflow run: ${run.id}`);
 
     const executionLogs: { timestamp: string; type: string; message: string; agent?: string }[] = [];
+    const executionLogs: { timestamp: string; type: string; message: string; agent?: string; preview?: string }[] = [];
     const outputData: Record<string, unknown> = {};
 
     try {
