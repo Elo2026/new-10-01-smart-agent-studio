@@ -19,6 +19,15 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
+if (missingEnvKeys.length > 0) {
+  console.warn("Missing runtime environment variables:", missingEnvKeys);
+}
+
+const root = createRoot(rootElement);
+
+import("./App").then(({ default: App }) => {
+  root.render(<App />);
+});
 const root = createRoot(rootElement);
 
 const resolveMissingEnvKeys = async () => {
