@@ -54,6 +54,12 @@ interface AgentNodeData {
   };
 }
 
+interface WorkflowImportData {
+  name?: string;
+  nodes?: unknown;
+  edges?: unknown;
+}
+
 // Model color configurations
 const modelColors: Record<string, { gradient: string; glow: string; text: string }> = {
   core_analyst: { gradient: 'from-blue-500 to-cyan-500', glow: 'shadow-blue-500/30', text: 'text-blue-500' },
@@ -287,10 +293,16 @@ export const MultiAgentCanvas: React.FC = () => {
   );
 
   // Handle import
-  const handleImport = (data: any) => {
-    if (data.nodes) setNodes(data.nodes);
-    if (data.edges) setEdges(data.edges);
-    if (data.name) setConfigName(data.name);
+  const handleImport = (data: WorkflowImportData) => {
+    if (Array.isArray(data.nodes)) {
+      setNodes(data.nodes as Node[]);
+    }
+    if (Array.isArray(data.edges)) {
+      setEdges(data.edges as Edge[]);
+    }
+    if (typeof data.name === 'string') {
+      setConfigName(data.name);
+    }
     toast({ title: 'Imported', description: 'Workflow imported successfully' });
   };
 
@@ -447,6 +459,15 @@ export const MultiAgentCanvas: React.FC = () => {
 
     setSaving(true);
     const { data: user } = await supabase.auth.getUser();
+    if (!user.user) {
+      toast({
+        title: 'Not Signed In',
+        description: 'Please sign in to save configurations',
+        variant: 'destructive',
+      });
+      setSaving(false);
+      return;
+    }
     
     const configData = {
       name: configName,
@@ -455,7 +476,7 @@ export const MultiAgentCanvas: React.FC = () => {
       canvas_data: JSON.parse(JSON.stringify({ nodes, edges })),
       agent_nodes: JSON.parse(JSON.stringify(nodes.filter((n) => n.type === 'agent').map((n) => n.data))),
       connections: JSON.parse(JSON.stringify(edges)),
-      created_by: user.user?.id!,
+      created_by: user.user.id,
     };
 
     let error = null;
@@ -513,10 +534,18 @@ export const MultiAgentCanvas: React.FC = () => {
     // Save to exported_configs if we have a configId
     if (configId) {
       const { data: user } = await supabase.auth.getUser();
+      if (!user.user) {
+        toast({
+          title: 'Not Signed In',
+          description: 'Please sign in to export configurations',
+          variant: 'destructive',
+        });
+        return;
+      }
       await supabase.from('exported_configs').insert({
         multi_agent_config_id: configId,
         config_data: JSON.parse(JSON.stringify(exportData)),
-        exported_by: user.user?.id!,
+        exported_by: user.user.id,
       });
     }
 

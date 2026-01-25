@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -262,7 +263,7 @@ function calculateQualityScore(content: string): number {
   
   // Structure bonus (has formatting)
   if (/\n/.test(content)) score += 0.05;
-  if (/[•\-\*]/.test(content)) score += 0.05; // Has lists
+  if (/[•*-]/.test(content)) score += 0.05; // Has lists
   if (/\d+\./.test(content)) score += 0.05; // Has numbered items
   
   // Information density (has specific data)
@@ -508,7 +509,7 @@ async function extractContent(
 
 // Build knowledge graph entries from entities
 async function buildKnowledgeGraph(
-  supabase: any,
+  supabase: SupabaseClient,
   entities: { name: string; type: string }[],
   chunkId: string,
   documentContext: string
