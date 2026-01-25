@@ -1,67 +1,88 @@
 
+# Fix All TypeScript Build Errors
 
-## Fix App Build Errors
+## Summary
+There are **3 files** with TypeScript errors that need to be fixed:
+1. `supabase/functions/run-workflow/index.ts` - Duplicate variable declarations
+2. `src/components/agent/ConfigurationCompatibilityChecker.tsx` - Type assignment error
+3. `src/pages/AgentConfiguration.tsx` - Multiple duplicate declarations and type issues
 
-There are two files with syntax/duplication errors that need to be fixed:
+---
 
-### 1. Fix `src/integrations/supabase/client.ts`
+## Error Analysis & Fixes
 
-**Issue:** Extra `});` at the end of the file (line 36) causing a syntax error.
+### 1. Edge Function: `supabase/functions/run-workflow/index.ts`
 
-**Fix:** Remove the stray `});` from line 36.
+**Errors:**
+- Line 107-108: Duplicate `const executionLogs` declarations
+- Line 257: `preview` property used but not in type definition on first declaration
 
-### 2. Fix `src/main.tsx`
+**Fix:**
+Remove line 107 (the duplicate without `preview`), keeping only line 108 which includes the `preview?: string` property in the type definition.
 
-**Issue:** The file has severely duplicated code:
-- `REQUIRED_ENV_KEYS` is declared 3 times (lines 6-11, 12, and 23)
-- `missingEnvKeys` is declared twice (lines 13-21 and lines 24-25)
-- `createRoot` is called twice with conflicting logic (lines 32-34 and 35-43)
+---
 
-**Fix:** Clean up the file to have a single, working version:
-- Keep only the proper `REQUIRED_ENV_KEYS` constant
-- Keep only one `missingEnvKeys` calculation using the `getSupabaseUrl()` and `getSupabasePublishableKey()` functions
-- Keep only the dynamic import pattern for loading the App
+### 2. Component: `src/components/agent/ConfigurationCompatibilityChecker.tsx`
 
-### Final Clean Code
+**Error:**
+- Line 61-62: Duplicate assignment to `rulesToDisable[ruleItem.key]` - first assigns `false`, second tries to cast
 
-**`src/integrations/supabase/client.ts`:**
+**Fix:**
+Remove line 61, keep only line 62 with the proper type cast:
 ```typescript
-// Lines 1-35 remain the same, just remove line 36 (the stray `});`)
+(rulesToDisable as Record<string, boolean>)[ruleItem.key] = false;
 ```
 
-**`src/main.tsx`:**
+---
+
+### 3. Page: `src/pages/AgentConfiguration.tsx`
+
+**Multiple Errors:**
+
+| Line | Error | Fix |
+|------|-------|-----|
+| 203-204 | Duplicate `agent_tasks` assignment | Remove line 203, keep line 204 with proper `asRecord()` usage |
+| 315-319 | Duplicate `rag_policy` and `response_rules` properties | Remove lines 315-317, keep lines 318-319 with `as unknown` casts |
+| 328-329 | Duplicate `const { error }` declarations | Remove line 328, keep line 329 with `as never` cast |
+
+**Corrected payload structure (lines 302-320):**
 ```typescript
-import { createRoot } from "react-dom/client";
-import "./index.css";
-import { MissingEnvScreen } from "./components/system/MissingEnvScreen.tsx";
-import { getSupabasePublishableKey, getSupabaseUrl } from "./lib/env.ts";
-
-const REQUIRED_ENV_KEYS = ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY"] as const;
-const missingEnvKeys = REQUIRED_ENV_KEYS.filter((key) => {
-  if (key === "VITE_SUPABASE_URL") {
-    return !getSupabaseUrl();
-  }
-  if (key === "VITE_SUPABASE_PUBLISHABLE_KEY") {
-    return !getSupabasePublishableKey();
-  }
-  return false;
-});
-
-const rootElement = document.getElementById("root");
-if (!rootElement) {
-  throw new Error("Root element not found");
-}
-
-const root = createRoot(rootElement);
-
-if (missingEnvKeys.length > 0) {
-  root.render(<MissingEnvScreen missing={missingEnvKeys} />);
-} else {
-  import("./App").then(({ default: App }) => {
-    root.render(<App />);
-  });
-}
+const payload: Record<string, unknown> = {
+  display_name: formData.display_name,
+  user_defined_name: formData.user_defined_name || formData.display_name,
+  role_description: formData.role_description || null,
+  persona: formData.persona || null,
+  intro_sentence: formData.intro_sentence || null,
+  core_model: formData.core_model,
+  api_key_id: formData.api_key_id || null,
+  allowed_folders: formData.allowed_folders,
+  is_active: formData.is_active,
+  active_from: formData.active_from,
+  active_until: formData.active_until,
+  active_days: formData.active_days,
+  rag_policy: formData.rag_policy as unknown,
+  response_rules: formData.response_rules as unknown,
+  agent_tasks: formData.agent_tasks as unknown,
+};
 ```
 
-This will resolve both build errors and restore the app to working order.
+---
 
+## Technical Details
+
+### Root Cause
+Previous edits attempted to fix type errors by adding new lines with different type casts, but forgot to remove the original problematic lines. This resulted in duplicate declarations.
+
+### Changes Summary
+
+| File | Lines Changed | Action |
+|------|---------------|--------|
+| `run-workflow/index.ts` | 107 | Delete duplicate declaration |
+| `ConfigurationCompatibilityChecker.tsx` | 61 | Delete duplicate assignment |
+| `AgentConfiguration.tsx` | 203, 315-317, 328 | Delete duplicate declarations |
+
+### Expected Result
+After these fixes, all TypeScript errors will be resolved and the app will compile successfully with:
+- 0 edge function errors
+- 0 component errors
+- 0 page errors
