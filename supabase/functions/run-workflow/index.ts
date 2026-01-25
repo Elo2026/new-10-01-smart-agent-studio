@@ -104,8 +104,8 @@ serve(async (req) => {
 
     console.log(`Created workflow run: ${run.id}`);
 
-    const executionLogs: any[] = [];
-    let outputData: any = {};
+    const executionLogs: { timestamp: string; type: string; message: string; agent?: string }[] = [];
+    const outputData: Record<string, unknown> = {};
 
     try {
       // Parse agent nodes from workflow

@@ -100,7 +100,9 @@ export const Marketplace: React.FC = () => {
   );
 
   // Get unique categories
-  const categories = [...new Set(items.map(item => item.category).filter(Boolean))];
+  const categories = [
+    ...new Set(items.map(item => item.category).filter((category): category is string => Boolean(category))),
+  ];
 
   const handleImport = async (item: MarketplaceItem) => {
     if (!currentWorkspace) {
@@ -114,6 +116,15 @@ export const Marketplace: React.FC = () => {
 
     setImporting(item.id);
     const { data: user } = await supabase.auth.getUser();
+    if (!user.user) {
+      toast({
+        title: 'Not Signed In',
+        description: 'Please sign in to import configurations',
+        variant: 'destructive',
+      });
+      setImporting(null);
+      return;
+    }
 
     try {
       if (item.item_type === 'single_agent') {
@@ -129,7 +140,7 @@ export const Marketplace: React.FC = () => {
             intro_sentence: agentConfig.intro_sentence as string || null,
             response_rules: agentConfig.response_rules as Json || null,
             rag_policy: agentConfig.rag_policy as Json || null,
-            created_by: user.user?.id || null,
+            created_by: user.user.id,
           }])
           .select()
           .single();
@@ -139,7 +150,7 @@ export const Marketplace: React.FC = () => {
         // Track import
         await supabase.from('marketplace_imports').insert({
           marketplace_item_id: item.id,
-          imported_by: user.user?.id!,
+          imported_by: user.user.id,
           workspace_id: currentWorkspace.id,
           imported_config_id: newAgent.id,
         });
@@ -161,7 +172,7 @@ export const Marketplace: React.FC = () => {
             canvas_data: item.canvas_data,
             agent_nodes: (item.config_data as Record<string, unknown>).agent_nodes as Json,
             connections: (item.config_data as Record<string, unknown>).connections as Json,
-            created_by: user.user?.id!,
+            created_by: user.user.id,
           })
           .select()
           .single();
@@ -171,7 +182,7 @@ export const Marketplace: React.FC = () => {
         // Track import
         await supabase.from('marketplace_imports').insert({
           marketplace_item_id: item.id,
-          imported_by: user.user?.id!,
+          imported_by: user.user.id,
           workspace_id: currentWorkspace.id,
           imported_config_id: newConfig.id,
         });
@@ -347,11 +358,11 @@ export const Marketplace: React.FC = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat!}>
-                {cat}
-              </SelectItem>
-            ))}
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
           </SelectContent>
         </Select>
       </div>
