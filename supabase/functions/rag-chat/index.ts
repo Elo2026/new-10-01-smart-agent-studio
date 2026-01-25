@@ -174,14 +174,16 @@ Last 2 messages context: ${conversationHistory.slice(-2).map(m => m.content?.sub
           const parsed = JSON.parse(jsonMatch[0]);
           
           // Cache the result with user_id for RLS compliance
-          await supabase.from('query_complexity_cache').insert({
-            query_hash: hashHex,
-            original_query: query.substring(0, 500),
-            complexity: parsed.complexity,
-            recommended_strategy: parsed.strategy,
-            analysis_details: parsed.indicators || {},
-            user_id: userId
-          }).catch(() => {}); // Ignore cache errors
+          try {
+            await supabase.from('query_complexity_cache').insert({
+              query_hash: hashHex,
+              original_query: query.substring(0, 500),
+              complexity: parsed.complexity,
+              recommended_strategy: parsed.strategy,
+              analysis_details: parsed.indicators || {},
+              user_id: userId
+            });
+          } catch { /* Ignore cache errors */ }
 
           return {
             complexity: parsed.complexity || 'moderate',
@@ -229,11 +231,12 @@ async function retrieveAgentMemory(
         .filter(isRecord)
         .map((memory) => memory.id)
         .filter((id): id is string => typeof id === 'string');
+      // Note: Supabase JS client doesn't support raw SQL expressions in updates
+      // We just update last_accessed; access_count would need a DB function
       await supabase
         .from('agent_memory')
         .update({ 
-          last_accessed: new Date().toISOString(),
-          access_count: supabase.raw('access_count + 1')
+          last_accessed: new Date().toISOString()
         })
         .in('id', ids);
     }
@@ -351,13 +354,109 @@ async function executeSummarize(
 
 async function executeCalculate(expression: string): Promise<string> {
   try {
-    // Safe evaluation for basic math
-    const sanitized = expression.replace(/[^0-9+\-*/().%\s]/g, '');
-    const result = Function(`"use strict"; return (${sanitized})`)();
+    // Security validation: limit expression length
+    if (expression.length > 200) {
+      return 'Error: Expression too long (max 200 characters)';
+    }
+    
+    // Strict whitelist validation - only allow numbers, operators, parentheses, decimals
+    const sanitized = expression.replace(/\s/g, '');
+    if (!/^[\d+\-*/().%]+$/.test(sanitized)) {
+      return 'Error: Invalid characters in expression. Only numbers and operators (+, -, *, /, %, .) are allowed.';
+    }
+    
+    // Check for empty expression after sanitization
+    if (!sanitized || sanitized.length === 0) {
+      return 'Error: Empty expression';
+    }
+    
+    // Check balanced parentheses
+    let depth = 0;
+    for (const char of sanitized) {
+      if (char === '(') depth++;
+      if (char === ')') depth--;
+      if (depth < 0) return 'Error: Unbalanced parentheses';
+    }
+    if (depth !== 0) return 'Error: Unbalanced parentheses';
+    
+    // Prevent consecutive operators (except unary minus after opening paren)
+    if (/[+\-*/]{2,}/.test(sanitized.replace(/\(-/g, '(~'))) {
+      return 'Error: Invalid operator sequence';
+    }
+    
+    // Safe recursive descent parser for basic math
+    const result = safeEvaluate(sanitized);
+    
+    if (typeof result !== 'number' || !isFinite(result)) {
+      return 'Error: Invalid calculation result';
+    }
+    
     return `Result: ${result}`;
   } catch (error) {
-    return `Error: Unable to calculate "${expression}"`;
+    return 'Error: Calculation failed';
   }
+}
+
+// Safe math expression evaluator using recursive descent parser
+// This avoids using Function constructor or eval
+function safeEvaluate(expr: string): number {
+  let pos = 0;
+  
+  function parseExpression(): number {
+    let result = parseTerm();
+    while (pos < expr.length && (expr[pos] === '+' || expr[pos] === '-')) {
+      const op = expr[pos++];
+      const term = parseTerm();
+      result = op === '+' ? result + term : result - term;
+    }
+    return result;
+  }
+  
+  function parseTerm(): number {
+    let result = parseFactor();
+    while (pos < expr.length && (expr[pos] === '*' || expr[pos] === '/' || expr[pos] === '%')) {
+      const op = expr[pos++];
+      const factor = parseFactor();
+      if (op === '*') result *= factor;
+      else if (op === '/') {
+        if (factor === 0) throw new Error('Division by zero');
+        result /= factor;
+      } else {
+        if (factor === 0) throw new Error('Modulo by zero');
+        result %= factor;
+      }
+    }
+    return result;
+  }
+  
+  function parseFactor(): number {
+    // Handle unary minus
+    if (expr[pos] === '-') {
+      pos++;
+      return -parseFactor();
+    }
+    
+    // Handle parentheses
+    if (expr[pos] === '(') {
+      pos++; // skip '('
+      const result = parseExpression();
+      pos++; // skip ')'
+      return result;
+    }
+    
+    // Parse number (including decimals)
+    let numStr = '';
+    while (pos < expr.length && (/\d/.test(expr[pos]) || expr[pos] === '.')) {
+      numStr += expr[pos++];
+    }
+    
+    if (!numStr) throw new Error('Expected number');
+    const num = parseFloat(numStr);
+    if (isNaN(num)) throw new Error('Invalid number');
+    return num;
+  }
+  
+  return parseExpression();
 }
 
 async function executeCompare(

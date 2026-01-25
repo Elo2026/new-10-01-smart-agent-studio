@@ -49,3 +49,10 @@ resolveMissingEnvKeys().then((resolvedMissing) => {
     root.render(<App />);
   });
 });
+if (missingEnvKeys.length > 0) {
+  root.render(<MissingEnvScreen missing={missingEnvKeys} />);
+} else {
+  import("./App").then(({ default: App }) => {
+    root.render(<App />);
+  });
+}
