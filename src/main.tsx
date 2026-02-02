@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import { MissingEnvScreen } from "./components/system/MissingEnvScreen.tsx";
-import { getSupabasePublishableKey, getSupabaseUrl } from "./lib/env.ts";
+import { MissingEnvScreen } from "./components/system/MissingEnvScreen";
+import { getSupabasePublishableKey, getSupabaseUrl } from "./lib/env";
 
 const REQUIRED_ENV_KEYS = ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY"] as const;
 
