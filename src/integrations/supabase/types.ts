@@ -761,6 +761,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "marketplace_imports_marketplace_item_id_fkey"
+            columns: ["marketplace_item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "marketplace_imports_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -871,6 +878,13 @@ export type Database = {
             columns: ["marketplace_item_id"]
             isOneToOne: false
             referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_ratings_marketplace_item_id_fkey"
+            columns: ["marketplace_item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1761,6 +1775,60 @@ export type Database = {
       }
     }
     Views: {
+      marketplace_items_public: {
+        Row: {
+          agent_count: number | null
+          canvas_data: Json | null
+          category: string | null
+          config_data: Json | null
+          created_at: string | null
+          description: string | null
+          download_count: number | null
+          id: string | null
+          is_public: boolean | null
+          item_type: string | null
+          name: string | null
+          rating: number | null
+          rating_count: number | null
+          tags: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_count?: number | null
+          canvas_data?: Json | null
+          category?: string | null
+          config_data?: Json | null
+          created_at?: string | null
+          description?: string | null
+          download_count?: number | null
+          id?: string | null
+          is_public?: boolean | null
+          item_type?: string | null
+          name?: string | null
+          rating?: number | null
+          rating_count?: number | null
+          tags?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_count?: number | null
+          canvas_data?: Json | null
+          category?: string | null
+          config_data?: Json | null
+          created_at?: string | null
+          description?: string | null
+          download_count?: number | null
+          id?: string | null
+          is_public?: boolean | null
+          item_type?: string | null
+          name?: string | null
+          rating?: number | null
+          rating_count?: number | null
+          tags?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       workspace_members_public: {
         Row: {
           accepted_at: string | null

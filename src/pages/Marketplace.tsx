@@ -34,11 +34,13 @@ interface MarketplaceItem {
   agent_count: number | null;
   tags: string[] | null;
   category: string | null;
-  publisher_id: string;
+  publisher_id?: string; // Optional - not included in public view
   download_count: number | null;
   rating: number | null;
   rating_count: number | null;
   created_at: string;
+  updated_at?: string;
+  is_public?: boolean;
 }
 
 export const Marketplace: React.FC = () => {
@@ -50,27 +52,29 @@ export const Marketplace: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('all');
   const [importing, setImporting] = useState<string | null>(null);
 
-  // Fetch marketplace items
+  // Fetch marketplace items from the public view (hides publisher info)
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['marketplace-items', activeTab, selectedCategory],
     queryFn: async () => {
-      let query = supabase
-        .from('marketplace_items')
+      // Use the public view which excludes sensitive publisher data
+      const { data, error } = await supabase
+        .from('marketplace_items_public')
         .select('*')
-        .eq('is_public', true)
         .order('download_count', { ascending: false });
 
+      if (error) throw error;
+      
+      let filtered = data || [];
+      
       if (activeTab !== 'all') {
-        query = query.eq('item_type', activeTab);
+        filtered = filtered.filter(item => item.item_type === activeTab);
       }
 
       if (selectedCategory !== 'all') {
-        query = query.eq('category', selectedCategory);
+        filtered = filtered.filter(item => item.category === selectedCategory);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as MarketplaceItem[];
+      return filtered as MarketplaceItem[];
     },
   });
 
