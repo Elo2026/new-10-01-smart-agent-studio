@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { WorkflowPreviewDiagram } from '@/components/workflow/WorkflowPreviewDiagram';
+import { getSupabaseUrl } from '@/lib/env';
 import { 
   Send, 
   Bot, 
@@ -148,7 +149,7 @@ export const WorkflowBuilder: React.FC = () => {
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workflow-builder`,
+        `${getSupabaseUrl()}/functions/v1/workflow-builder`,
         {
           method: 'POST',
           headers: {
