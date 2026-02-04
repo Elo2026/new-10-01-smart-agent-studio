@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { SmartSuggestions, generateAgentTestSuggestions } from '@/components/chat/SmartSuggestions';
 import { PromptRefinement, refinePrompt, usePromptRefinement } from '@/components/chat/PromptRefinement';
 import { ChatMessage, ChatMessageData } from '@/components/chat/ChatMessage';
+import { getSupabaseUrl } from '@/lib/env';
 
 interface Message extends ChatMessageData {
   timestamp: Date;
@@ -29,7 +30,7 @@ interface Message extends ChatMessageData {
   };
 }
 
-const RAG_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rag-chat`;
+const RAG_CHAT_URL = `${getSupabaseUrl()}/functions/v1/rag-chat`;
 
 export const AgentTestChat: React.FC = () => {
   const { t } = useApp();

@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { SmartSuggestions, generatePageContextSuggestions } from '@/components/chat/SmartSuggestions';
 import { PromptRefinement, refinePrompt, usePromptRefinement } from '@/components/chat/PromptRefinement';
 import { ChatMessage, ChatMessageData } from '@/components/chat/ChatMessage';
+import { getSupabaseUrl } from '@/lib/env';
 
 interface Message extends ChatMessageData {
   conversationId?: string;
@@ -38,7 +39,7 @@ interface Conversation {
   created_at: string;
 }
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+const CHAT_URL = `${getSupabaseUrl()}/functions/v1/chat`;
 
 export const AIChat: React.FC = () => {
   const { t } = useApp();

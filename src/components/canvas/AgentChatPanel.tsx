@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Send, Bot, User, Loader2, X, Maximize2, Minimize2, Lightbulb } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getSupabaseUrl } from '@/lib/env';
 
 interface Message {
   id: string;
@@ -155,7 +156,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
       // Call the run-workflow edge function
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-workflow`,
+        `${getSupabaseUrl()}/functions/v1/run-workflow`,
         {
           method: 'POST',
           headers: {
