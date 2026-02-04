@@ -36,12 +36,20 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
 
     setLoading(true);
     try {
+      // Get current user ID for created_by field (required by RLS policy)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: 'Error', description: 'You must be logged in', variant: 'destructive' });
+        return;
+      }
+
       const { error } = await supabase.from('agent_workflows').insert({
         name: formData.name.trim(),
         description: formData.description || null,
         execution_mode: formData.execution_mode,
         canvas_data: { nodes: [], edges: [] },
         handoff_rules: [],
+        created_by: user.id,
       });
 
       if (error) throw error;
