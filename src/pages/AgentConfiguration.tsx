@@ -36,9 +36,12 @@ import { KnowledgeFolderSelector } from '@/components/agent/KnowledgeFolderSelec
 import { ResponsePreviewPanel } from '@/components/agent/ResponsePreviewPanel';
 import { ConfigurationCompatibilityChecker } from '@/components/agent/ConfigurationCompatibilityChecker';
 import { AgentTestChatDialog } from '@/components/agent/AgentTestChatDialog';
+import { MemorySettingsCard } from '@/components/agent/MemorySettingsCard';
+import { AwarenessSettingsCard } from '@/components/agent/AwarenessSettingsCard';
 import { createAgentTask, normalizeAgentTasks } from '@/lib/agents/tasks';
 import type { AgentTask, TaskScheduleHint } from '@/lib/agents/tasks';
-import type { ResponseRules, ReworkSettings } from '@/types';
+import type { ResponseRules, ReworkSettings, MemorySettings, AwarenessSettings, defaultMemorySettings as defaultMemSettingsType, defaultAwarenessSettings as defaultAwareSettingsType } from '@/types';
+import { defaultMemorySettings, defaultAwarenessSettings } from '@/types';
 
 type CoreModel = 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
 type CreativityLevel = 'none' | 'very_low' | 'low' | 'medium' | 'high';
@@ -65,6 +68,8 @@ interface AgentFormData {
   response_rules: ResponseRules;
   rework_settings: ReworkSettings;
   agent_tasks: AgentTask[];
+  memory_settings: MemorySettings;
+  awareness_settings: AwarenessSettings;
 }
 
 const defaultFormData: AgentFormData = {
@@ -102,6 +107,8 @@ const defaultFormData: AgentFormData = {
     auto_correct: true,
   },
   agent_tasks: [],
+  memory_settings: { ...defaultMemorySettings },
+  awareness_settings: { ...defaultAwarenessSettings },
 };
 
 export const AgentConfiguration: React.FC = () => {
@@ -211,6 +218,14 @@ export const AgentConfiguration: React.FC = () => {
           auto_correct: true,
         },
         agent_tasks: normalizeAgentTasks((asRecord(agent).agent_tasks as AgentTask[] | null) ?? null),
+        memory_settings: {
+          ...defaultMemorySettings,
+          ...(asRecord(agent.memory_settings as unknown) as Partial<MemorySettings>),
+        },
+        awareness_settings: {
+          ...defaultAwarenessSettings,
+          ...(asRecord(agent.awareness_settings as unknown) as Partial<AwarenessSettings>),
+        },
       });
     }
   }, [agent]);
@@ -324,6 +339,8 @@ export const AgentConfiguration: React.FC = () => {
         rag_policy: formData.rag_policy as unknown,
         response_rules: formData.response_rules as unknown,
         agent_tasks: formData.agent_tasks as unknown,
+        memory_settings: formData.memory_settings as unknown,
+        awareness_settings: formData.awareness_settings as unknown,
       };
 
       if (isNew) {
@@ -1027,6 +1044,17 @@ export const AgentConfiguration: React.FC = () => {
           onActiveUntilChange={(val) => setFormData({ ...formData, active_until: val })}
           activeDays={formData.active_days}
           onActiveDaysChange={(days) => setFormData({ ...formData, active_days: days })}
+        />
+
+        {/* Intelligence Section - Memory & Awareness */}
+        <MemorySettingsCard
+          settings={formData.memory_settings}
+          onChange={(settings) => setFormData(prev => ({ ...prev, memory_settings: settings }))}
+        />
+
+        <AwarenessSettingsCard
+          settings={formData.awareness_settings}
+          onChange={(settings) => setFormData(prev => ({ ...prev, awareness_settings: settings }))}
         />
       </div>
     </div>

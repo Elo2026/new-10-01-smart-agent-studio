@@ -61,6 +61,54 @@ export type Database = {
           },
         ]
       }
+      agent_experience_archive: {
+        Row: {
+          agent_id: string | null
+          context_type: string
+          created_at: string
+          id: string
+          learned_patterns: Json | null
+          success_score: number
+          task_summary: string
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          learned_patterns?: Json | null
+          success_score?: number
+          task_summary: string
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          learned_patterns?: Json | null
+          success_score?: number
+          task_summary?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_experience_archive_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_experience_archive_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_memory: {
         Row: {
           access_count: number | null
@@ -295,6 +343,7 @@ export type Database = {
           active_until: string | null
           allowed_folders: string[] | null
           api_key_id: string | null
+          awareness_settings: Json | null
           chunk_priority: string[] | null
           core_model: Database["public"]["Enums"]["core_model"]
           created_at: string | null
@@ -303,6 +352,7 @@ export type Database = {
           id: string
           intro_sentence: string | null
           is_active: boolean | null
+          memory_settings: Json | null
           persona: string | null
           rag_policy: Json | null
           response_rules: Json | null
@@ -317,6 +367,7 @@ export type Database = {
           active_until?: string | null
           allowed_folders?: string[] | null
           api_key_id?: string | null
+          awareness_settings?: Json | null
           chunk_priority?: string[] | null
           core_model?: Database["public"]["Enums"]["core_model"]
           created_at?: string | null
@@ -325,6 +376,7 @@ export type Database = {
           id?: string
           intro_sentence?: string | null
           is_active?: boolean | null
+          memory_settings?: Json | null
           persona?: string | null
           rag_policy?: Json | null
           response_rules?: Json | null
@@ -339,6 +391,7 @@ export type Database = {
           active_until?: string | null
           allowed_folders?: string[] | null
           api_key_id?: string | null
+          awareness_settings?: Json | null
           chunk_priority?: string[] | null
           core_model?: Database["public"]["Enums"]["core_model"]
           created_at?: string | null
@@ -347,6 +400,7 @@ export type Database = {
           id?: string
           intro_sentence?: string | null
           is_active?: boolean | null
+          memory_settings?: Json | null
           persona?: string | null
           rag_policy?: Json | null
           response_rules?: Json | null
