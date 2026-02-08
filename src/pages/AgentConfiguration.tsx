@@ -145,18 +145,28 @@ export const AgentConfiguration: React.FC = () => {
     enabled: !isNew,
   });
 
-  // Fetch workspace API keys
-  const { data: workspaceApiKeys } = useQuery({
+  // Fetch workspace API keys (from safe view that excludes encrypted key data)
+  interface SafeApiKey {
+    id: string;
+    workspace_id: string;
+    provider: string;
+    display_name: string | null;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  }
+  const { data: workspaceApiKeys } = useQuery<SafeApiKey[]>({
     queryKey: ['workspace-api-keys', currentWorkspace?.id],
     queryFn: async () => {
       if (!currentWorkspace?.id) return [];
       const { data, error } = await supabase
-        .from('workspace_api_keys')
-        .select('*')
+        .from('workspace_api_keys_safe' as any)
+        .select('id, workspace_id, provider, display_name, is_active, created_by, created_at, updated_at')
         .eq('workspace_id', currentWorkspace.id)
         .eq('is_active', true);
       if (error) throw error;
-      return data;
+      return (data || []) as unknown as SafeApiKey[];
     },
     enabled: !!currentWorkspace?.id,
   });

@@ -364,6 +364,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ai_profiles_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_api_keys_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ai_profiles_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -406,6 +413,13 @@ export type Database = {
             columns: ["api_key_id"]
             isOneToOne: false
             referencedRelation: "workspace_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_key_access_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_api_keys_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -1828,6 +1842,47 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      workspace_api_keys_safe: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          display_name: string | null
+          id: string | null
+          is_active: boolean | null
+          provider: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          provider?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          provider?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_api_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workspace_members_public: {
         Row: {
