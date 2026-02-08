@@ -1384,6 +1384,37 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Validate JWT authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      console.error("Missing or invalid authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing authorization", success: false }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Create user-context client for auth validation
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: authData, error: authError } = await userClient.auth.getUser();
+    if (authError || !authData?.user) {
+      console.error("Authentication failed:", authError?.message || "No user found");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized", success: false }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const authenticatedUserId = authData.user.id;
+    console.log(`Authenticated user: ${authenticatedUserId}`);
+
     const { 
       messages, 
       agentConfig, 
@@ -1400,6 +1431,9 @@ serve(async (req) => {
       rework_settings,
       custom_response_template
     } = await req.json();
+    
+    // Use authenticated user id, fallback to provided user_id for backward compat
+    const effectiveUserId = authenticatedUserId || user_id;
     
     // Parse rework settings with defaults
     const reworkConfig: ReworkSettings = rework_settings || {
@@ -1448,19 +1482,44 @@ serve(async (req) => {
       }
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use service role client for DB operations (needed for cross-user data access)
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const userMessage = messages[messages.length - 1]?.content || "";
-    console.log(`Agentic RAG: "${userMessage.substring(0, 50)}..."`);
+    console.log(`Agentic RAG: "${userMessage.substring(0, 50)}..." | User: ${effectiveUserId}`);
+
+    // Fetch agent memory/awareness settings if agent_id provided
+    let memorySettings = { short_term_enabled: true, context_window_size: 10, long_term_enabled: false, retention_policy: 'keep_successful', learn_preferences: true };
+    let awarenessSettings = { awareness_level: 2, self_role_enabled: false, role_boundaries: null as string | null, state_awareness_enabled: false, state_context_source: 'project_status', proactive_reasoning: false, feedback_learning: false };
+
+    if (agentConfig?.agent_id) {
+      const { data: profileData } = await supabase
+        .from('ai_profiles')
+        .select('memory_settings, awareness_settings')
+        .eq('id', agentConfig.agent_id)
+        .single();
+      
+      if (profileData) {
+        if (profileData.memory_settings && typeof profileData.memory_settings === 'object') {
+          memorySettings = { ...memorySettings, ...(profileData.memory_settings as Record<string, unknown>) } as typeof memorySettings;
+        }
+        if (profileData.awareness_settings && typeof profileData.awareness_settings === 'object') {
+          awarenessSettings = { ...awarenessSettings, ...(profileData.awareness_settings as Record<string, unknown>) } as typeof awarenessSettings;
+        }
+      }
+      console.log(`Agent settings loaded - Memory: STM=${memorySettings.short_term_enabled}, LTM=${memorySettings.long_term_enabled} | Awareness: Level=${awarenessSettings.awareness_level}`);
+    }
+
+    // Apply context window limiting based on short-term memory settings
+    const contextWindowSize = memorySettings.short_term_enabled ? memorySettings.context_window_size * 2 : 6; // *2 because each exchange = 2 messages
+    const windowedMessages = messages.slice(-Math.min(messages.length, contextWindowSize));
 
     // Step 1: Analyze query complexity for adaptive strategy
     let complexity: QueryComplexity = 'moderate';
     let strategy = 'standard_rag';
     
     if (enable_adaptive_strategy) {
-      const analysis = await analyzeQueryComplexity(userMessage, messages.slice(0, -1), supabase, user_id);
+      const analysis = await analyzeQueryComplexity(userMessage, windowedMessages.slice(0, -1), supabase, effectiveUserId);
       complexity = analysis.complexity;
       strategy = analysis.strategy;
       console.log(`Adaptive Strategy: ${complexity} -> ${strategy}`);
@@ -1468,8 +1527,8 @@ serve(async (req) => {
 
     // Step 2: Retrieve agent memory
     let userMemory: AgentMemoryItem[] = [];
-    if (enable_memory && user_id) {
-      userMemory = await retrieveAgentMemory(user_id, agentConfig?.agent_id || null, supabase);
+    if (enable_memory && effectiveUserId) {
+      userMemory = await retrieveAgentMemory(effectiveUserId, agentConfig?.agent_id || null, supabase);
       console.log(`Retrieved ${userMemory.length} memory items`);
     }
 
@@ -1550,6 +1609,23 @@ serve(async (req) => {
       const templateToUse = custom_response_template || agentConfig?.response_rules?.custom_response_template;
       if (templateToUse) {
         systemPrompt += `\n\n## RESPONSE TEMPLATE\nStructure your response following this template:\n${templateToUse}`;
+      }
+
+      // Inject Awareness Directives
+      if (awarenessSettings.self_role_enabled && awarenessSettings.role_boundaries) {
+        systemPrompt += `\n\n## SELF-ROLE AWARENESS\nYour role boundaries: ${awarenessSettings.role_boundaries}\nIf a request falls outside your area of expertise or defined boundaries, clearly state: "This falls outside my area of expertise." and suggest what kind of specialist should be consulted.`;
+      }
+
+      if (awarenessSettings.state_awareness_enabled) {
+        systemPrompt += `\n\n## STATE AWARENESS\nYou are context-aware. Before responding, consider the current state of the conversation and project. Adjust your response detail and urgency accordingly. Context source: ${awarenessSettings.state_context_source}.`;
+      }
+
+      if (awarenessSettings.proactive_reasoning) {
+        systemPrompt += `\n\n## PROACTIVE REASONING (Chain of Verification)\nBefore providing your answer, internally verify:\n1. Does this response align with the user's stated goal?\n2. Have I stayed within my role boundaries?\n3. Is my confidence level sufficient to provide this answer?\n4. Are there any gaps or assumptions I should flag?`;
+      }
+
+      if (awarenessSettings.awareness_level >= 4) {
+        systemPrompt += `\n\n## ADVANCED AUTONOMY\nYou are operating at high awareness level (${awarenessSettings.awareness_level}/5). You should:\n- Proactively identify gaps in the user's request\n- Suggest improvements and alternatives\n- Flag potential issues before they arise\n- Provide meta-commentary on your reasoning process`;
       }
       
       systemPrompt += `\n\nUse the provided context to answer questions.\n\n=== CONTEXT ===\n${context}\n=== END CONTEXT ===`;
@@ -1646,15 +1722,38 @@ serve(async (req) => {
       }
     }
 
-    // Step 6: Update agent memory with learnings
-    if (enable_memory && user_id && response) {
+    // Step 7: Update agent memory with learnings
+    if (enable_memory && effectiveUserId && response) {
       extractMemoryFromConversation(
-        userMessage, response, user_id,
+        userMessage, response, effectiveUserId,
         agentConfig?.agent_id || null,
         workspace_id || null,
         conversation_id,
         supabase
       ).catch(console.error); // Fire and forget
+    }
+
+    // Step 7b: Archive successful experience for long-term memory
+    if (memorySettings.long_term_enabled && agentConfig?.agent_id && workspace_id && response.length > 100) {
+      const archiveConfidence = citations.length > 0 ? Math.min(0.95, 0.5 + citations.length * 0.1) : 0.4;
+      const shouldArchive = memorySettings.retention_policy === 'keep_all' || 
+        (memorySettings.retention_policy === 'keep_successful' && archiveConfidence > 0.6);
+      
+      if (shouldArchive) {
+        supabase.from('agent_experience_archive').insert({
+          agent_id: agentConfig.agent_id,
+          workspace_id: workspace_id,
+          task_summary: `Q: ${userMessage.substring(0, 200)} | A: ${response.substring(0, 300)}`,
+          context_type: complexity === 'complex' ? 'analysis' : complexity === 'simple' ? 'lookup' : 'synthesis',
+          success_score: archiveConfidence,
+          learned_patterns: {
+            strategy_used: strategy,
+            citations_count: citations.length,
+            chunks_used: chunks.length,
+            reasoning_steps: reasoningSteps.length
+          }
+        }).then(() => console.log('Experience archived')).catch(console.error);
+      }
     }
 
     // Step 7: Log self-evaluation

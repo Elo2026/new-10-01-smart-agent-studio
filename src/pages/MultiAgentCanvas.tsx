@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock, Undo2, Redo2, Printer } from 'lucide-react';
+import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock, Undo2, Redo2, Printer, Brain, Eye } from 'lucide-react';
 import { usePrintCanvas } from '@/hooks/usePrintCanvas';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +44,9 @@ interface AgentNodeData {
   model: string;
   role?: string;
   agentId: string;
+  memoryEnabled?: boolean;
+  awarenessEnabled?: boolean;
+  awarenessLevel?: number;
   inputs?: {
     fromKnowledgeBase: string[];
     fromAgents: string[];
@@ -121,8 +124,8 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
         <p className="text-xs text-muted-foreground line-clamp-2 mb-3 pl-1 border-l-2 border-primary/30">{nodeData.role}</p>
       )}
       
-      {/* I/O Stats */}
-      <div className="flex gap-2 text-xs">
+      {/* I/O Stats + Intelligence Indicators */}
+      <div className="flex gap-2 text-xs flex-wrap">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-muted/80">
           <div className="w-2 h-2 rounded-full bg-green-500" />
           <span className="font-medium">{inputCount} in</span>
@@ -131,6 +134,16 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
           <div className="w-2 h-2 rounded-full bg-blue-500" />
           <span className="font-medium">{outputCount} out</span>
         </div>
+        {nodeData.memoryEnabled && (
+          <div className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-primary/10" title="Memory Enabled">
+            <Brain className="h-3 w-3 text-primary" />
+          </div>
+        )}
+        {nodeData.awarenessEnabled && (
+          <div className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-primary/10" title={`Awareness Level ${nodeData.awarenessLevel || 2}`}>
+            <Eye className="h-3 w-3 text-primary" />
+          </div>
+        )}
       </div>
       
       <Handle
@@ -418,6 +431,9 @@ export const MultiAgentCanvas: React.FC = () => {
         model: agent.core_model,
         role: agent.role_description,
         agentId: agent.id,
+        memoryEnabled: !!(agent.memory_settings as Record<string, unknown>)?.short_term_enabled || !!(agent.memory_settings as Record<string, unknown>)?.long_term_enabled,
+        awarenessEnabled: !!(agent.awareness_settings as Record<string, unknown>)?.self_role_enabled || !!(agent.awareness_settings as Record<string, unknown>)?.proactive_reasoning,
+        awarenessLevel: ((agent.awareness_settings as Record<string, unknown>)?.awareness_level as number) || 2,
         inputs: { fromKnowledgeBase: allowedFolders, fromAgents: [] },
         outputs: { toKnowledgeBase: false, toAgents: [] },
       },
