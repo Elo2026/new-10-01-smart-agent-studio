@@ -31,7 +31,8 @@ export const getSupabaseUrl = (): string | undefined => {
   if (env.VITE_SUPABASE_PROJECT_ID) {
     return `https://${env.VITE_SUPABASE_PROJECT_ID}.supabase.co`;
   }
-  return undefined;
+  // Fallback to the project's default Supabase URL
+  return "https://mypfeihhophbtulgbonp.supabase.co";
 };
 
 export const getSupabasePublishableKey = (): string | undefined => {

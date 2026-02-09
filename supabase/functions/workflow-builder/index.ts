@@ -6,7 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const getAIConfig = () => {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  const groqKey = Deno.env.get("GROQ_API_KEY");
+
+  if (lovableKey) return {
+    apiUrl: "https://ai.gateway.lovable.dev/v1/chat/completions",
+    apiKey: lovableKey,
+    model: "google/gemini-2.5-flash",
+    provider: "lovable"
+  };
+  if (openaiKey) return {
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKey: openaiKey,
+    model: "gpt-4o", // Workflow builder benefits from a smarter model
+    provider: "openai"
+  };
+  if (groqKey) return {
+    apiUrl: "https://api.groq.com/openai/v1/chat/completions",
+    apiKey: groqKey,
+    model: "llama-3.1-70b-versatile",
+    provider: "groq"
+  };
+  return { apiUrl: null, apiKey: null, model: null, provider: null };
+};
 
 const systemPrompt = `You are an expert AI Workflow Architect. Your job is to design COMPLETE, PRODUCTION-READY multi-agent workflows based on user descriptions.
 
@@ -202,20 +226,21 @@ serve(async (req) => {
       );
     }
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+    if (!apiKey) {
+      throw new Error('No AI provider configured');
     }
 
     console.log(`Processing workflow builder request for user ${user.id} with ${(messages as unknown[]).length} messages`);
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch(apiUrl!, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: aiModel,
         messages: [
           { role: 'system', content: systemPrompt },
           ...messages as Array<{ role: string; content: string }>,

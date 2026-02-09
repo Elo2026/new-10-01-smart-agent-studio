@@ -7,6 +7,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getAIConfig = () => {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  const groqKey = Deno.env.get("GROQ_API_KEY");
+
+  if (lovableKey) return {
+    apiUrl: "https://ai.gateway.lovable.dev/v1/chat/completions",
+    apiKey: lovableKey,
+    model: "google/gemini-2.5-flash",
+    provider: "lovable"
+  };
+  if (openaiKey) return {
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKey: openaiKey,
+    model: "gpt-4o", // Vision/PDF tasks benefit from a strong model
+    provider: "openai"
+  };
+  if (groqKey) return {
+    apiUrl: "https://api.groq.com/openai/v1/chat/completions",
+    apiKey: groqKey,
+    model: "llama-3.1-70b-versatile",
+    provider: "groq"
+  };
+  return { apiUrl: null, apiKey: null, model: null, provider: null };
+};
+
 interface ChunkMetadata {
   chunk_index: number;
   total_chunks: number;
@@ -31,9 +60,9 @@ interface DocumentAnalysis {
 
 // Analyze document to extract metadata using AI
 async function analyzeDocument(content: string, fileName: string): Promise<DocumentAnalysis> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  
-  if (!LOVABLE_API_KEY) {
+  const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+
+  if (!apiKey) {
     return {
       summary: `Document: ${fileName}`,
       key_topics: [],
@@ -44,14 +73,14 @@ async function analyzeDocument(content: string, fileName: string): Promise<Docum
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(apiUrl!, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -77,7 +106,7 @@ Always respond with valid JSON in this exact format:
     if (response.ok) {
       const data = await response.json();
       const analysisText = data.choices?.[0]?.message?.content || "";
-      
+
       // Parse JSON from response
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -110,27 +139,27 @@ Always respond with valid JSON in this exact format:
 
 // Generate contextual description for a chunk
 async function generateChunkContext(
-  chunk: string, 
-  documentSummary: string, 
+  chunk: string,
+  documentSummary: string,
   fileName: string,
   chunkIndex: number,
   totalChunks: number
 ): Promise<{ context: string; concepts: string[]; tags: string[] }> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  
-  if (!LOVABLE_API_KEY) {
+  const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+
+  if (!apiKey) {
     return { context: "", concepts: [], tags: [] };
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(apiUrl!, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -184,12 +213,12 @@ Generate context and tags for this chunk.`
 // Smart chunking with semantic boundaries
 function smartChunk(content: string, targetSize: number = 1000, overlap: number = 200): string[] {
   const chunks: string[] = [];
-  
+
   // Split by semantic boundaries: paragraphs, sections, sentences
   const paragraphs = content.split(/\n\n+/);
   let currentChunk = "";
   let overlapBuffer = "";
-  
+
   for (const para of paragraphs) {
     // If paragraph itself is too large, split by sentences
     if (para.length > targetSize) {
@@ -213,38 +242,38 @@ function smartChunk(content: string, targetSize: number = 1000, overlap: number 
       }
     }
   }
-  
+
   if (currentChunk.trim()) {
     chunks.push(overlapBuffer + currentChunk.trim());
   }
-  
+
   return chunks.filter(c => c.length > 50);
 }
 
 // Extract entities using simple NER patterns
 function extractSimpleEntities(text: string): { name: string; type: string }[] {
   const entities: { name: string; type: string }[] = [];
-  
+
   // Email patterns
   const emails = text.match(/[\w.-]+@[\w.-]+\.\w+/g) || [];
   emails.forEach(e => entities.push({ name: e, type: "EMAIL" }));
-  
+
   // URL patterns
   const urls = text.match(/https?:\/\/[^\s]+/g) || [];
   urls.forEach(u => entities.push({ name: u, type: "URL" }));
-  
+
   // Date patterns
   const dates = text.match(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b/gi) || [];
   dates.forEach(d => entities.push({ name: d, type: "DATE" }));
-  
+
   // Money patterns
   const money = text.match(/\$[\d,]+(?:\.\d{2})?|\b\d+(?:,\d{3})*(?:\.\d{2})?\s*(?:USD|EUR|GBP|dollars?)\b/gi) || [];
   money.forEach(m => entities.push({ name: m, type: "MONEY" }));
-  
+
   // Percentage patterns
   const percentages = text.match(/\b\d+(?:\.\d+)?%/g) || [];
   percentages.forEach(p => entities.push({ name: p, type: "PERCENTAGE" }));
-  
+
   return entities.slice(0, 20); // Limit entities
 }
 
@@ -256,41 +285,41 @@ function estimateTokens(text: string): number {
 // Calculate quality score based on content characteristics
 function calculateQualityScore(content: string): number {
   let score = 0.5; // Base score
-  
+
   // Length bonus (prefer substantial chunks)
   if (content.length > 200) score += 0.1;
   if (content.length > 500) score += 0.1;
-  
+
   // Structure bonus (has formatting)
   if (/\n/.test(content)) score += 0.05;
   if (/[•*-]/.test(content)) score += 0.05; // Has lists
   if (/\d+\./.test(content)) score += 0.05; // Has numbered items
-  
+
   // Information density (has specific data)
   if (/\d/.test(content)) score += 0.05; // Has numbers
   if (/@|https?:\/\//.test(content)) score += 0.05; // Has references
-  
+
   // Penalize low quality
   if (content.length < 100) score -= 0.2;
   if (/^[\s\n]*$/.test(content)) score = 0;
-  
+
   return Math.max(0, Math.min(1, score));
 }
 
 // Extract text from PDF using AI
 async function extractTextFromPDF(base64Content: string, fileName: string): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  
-  if (LOVABLE_API_KEY) {
+  const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+
+  if (apiKey) {
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch(apiUrl!, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: aiModel,
           messages: [
             {
               role: "system",
@@ -334,21 +363,21 @@ async function extractTextFromPDF(base64Content: string, fileName: string): Prom
 
 // Extract text from images using AI vision
 async function extractTextFromImage(base64Content: string, mimeType: string, fileName: string): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  
-  if (!LOVABLE_API_KEY) {
+  const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+
+  if (!apiKey) {
     return `[Image: ${fileName}]\nImage uploaded successfully. AI vision not configured for text extraction.`;
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(apiUrl!, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -391,21 +420,21 @@ async function extractTextFromImage(base64Content: string, mimeType: string, fil
 
 // Extract text from Office documents
 async function extractTextFromOfficeDoc(base64Content: string, mimeType: string, fileName: string): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  
-  if (!LOVABLE_API_KEY) {
+  const { apiUrl, apiKey, model: aiModel } = getAIConfig();
+
+  if (!apiKey) {
     return `[Document: ${fileName}]\nDocument uploaded. Configure AI for full text extraction.`;
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(apiUrl!, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -448,13 +477,13 @@ async function extractTextFromOfficeDoc(base64Content: string, mimeType: string,
 
 // Determine content type and extract text accordingly
 async function extractContent(
-  base64Content: string | null, 
+  base64Content: string | null,
   textContent: string | null,
-  mimeType: string, 
+  mimeType: string,
   fileName: string
 ): Promise<string> {
   const ext = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-  
+
   // Text-based files
   const textExtensions = ['.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm', '.css', '.js', '.ts', '.py', '.yaml', '.yml', '.log', '.ini', '.conf', '.sh', '.bat', '.sql', '.r', '.java', '.c', '.cpp', '.h', '.go', '.rs', '.php', '.rb', '.swift', '.kt'];
   if (textExtensions.includes(ext) || mimeType.startsWith('text/')) {
@@ -515,7 +544,7 @@ async function buildKnowledgeGraph(
   documentContext: string
 ) {
   const graphEntries = [];
-  
+
   // Create relationships between entities in the same chunk
   for (let i = 0; i < entities.length; i++) {
     for (let j = i + 1; j < entities.length; j++) {
@@ -531,7 +560,7 @@ async function buildKnowledgeGraph(
       });
     }
   }
-  
+
   if (graphEntries.length > 0) {
     await supabase.from("rag_knowledge_graph").insert(graphEntries);
   }
@@ -591,7 +620,7 @@ serve(async (req) => {
     console.log(`Authenticated user: ${user.id}`);
 
     const { fileName, folderId, content, base64Content, mimeType, enableContextual = true } = await req.json();
-    
+
     // Validate required fields
     if (!fileName || typeof fileName !== 'string') {
       return new Response(
@@ -692,7 +721,7 @@ serve(async (req) => {
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       let chunkContext = { context: "", concepts: [] as string[], tags: [] as string[] };
-      
+
       // Generate contextual metadata for each chunk
       if (enableContextual && documentAnalysis) {
         chunkContext = await generateChunkContext(
@@ -703,7 +732,7 @@ serve(async (req) => {
           chunks.length
         );
       }
-      
+
       // Extract entities from chunk
       const chunkEntities = extractSimpleEntities(chunk);
       const allEntities = [
@@ -763,8 +792,8 @@ serve(async (req) => {
     console.log(`Successfully processed ${sanitizedFileName}: ${chunks.length} chunks with contextual metadata`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         chunksCreated: chunks.length,
         contentLength: extractedContent.length,
         documentAnalysis: documentAnalysis ? {
