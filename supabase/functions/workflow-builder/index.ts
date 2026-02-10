@@ -120,15 +120,16 @@ RESPONSE RULES GUIDELINES:
 - refuse_if_uncertain: true for critical/compliance agents
 
 DESIGN PRINCIPLES:
-1. Each agent should have a SINGLE, CLEAR responsibility
-2. Data flow should be logical and efficient
-3. Include appropriate validation/review steps for critical workflows
-4. Final agent should produce a coherent, actionable output
-5. Consider error cases and edge scenarios
+1. Each agent should have a SINGLE, CLEAR responsibility.
+2. Data flow should be logical and efficient.
+3. CRITICAL: Always populate 'accepts_from_agents' and 'passes_to_agents' in 'input_config' and 'output_config' to match the 'connections' array.
+4. Use the format "agent_index_N" where N is the 0-based index of the agent in the 'agents' array.
+5. Include appropriate validation/review steps for critical workflows.
+6. Final agent should produce a coherent, actionable output.
 
 After generating the workflow, provide a brief explanation of:
 - Why you chose this architecture
-- How data flows between agents
+- How data flows between agents (referencing which agent provides inputs to whom)
 - What each agent contributes to the final output`;
 
 // Input validation helpers
