@@ -600,15 +600,18 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user context for RLS
+    // Create Supabase client with user context for auth verification
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
+    // Service role client for data operations (RLS bypass)
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       console.error("Authentication failed:", authError?.message);
       return new Response(
@@ -643,7 +646,7 @@ serve(async (req) => {
       }
 
       // Verify user has access to the folder - RLS will handle this
-      const { data: folder, error: folderError } = await supabase
+      const { data: folder, error: folderError } = await supabaseAuth
         .from("knowledge_folders")
         .select("id, workspace_id")
         .eq("id", folderId)
