@@ -1781,7 +1781,7 @@ serve(async (req) => {
             chunks_used: chunks.length,
             reasoning_steps: reasoningSteps.length
           }
-        }).then(() => console.log('Experience archived')).catch(console.error);
+        }).then(() => console.log('Experience archived'), (err: unknown) => console.error(err));
       }
     }
 
