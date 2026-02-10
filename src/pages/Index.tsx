@@ -5,10 +5,11 @@ import {
   ArrowRight, Bot, FileText, Users, Zap, Shield, 
   BarChart3, Globe, Code2, Layers, Cpu 
 } from "lucide-react";
-import { useEffect, useRef, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Hero3DScene from "@/components/hero/Hero3DScene";
+import { supabase } from "@/integrations/supabase/client";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -35,12 +36,33 @@ const FeatureCard = ({
   </div>
 );
 
+const formatCount = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M+`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K+`;
+  return `${n}`;
+};
+
 const Index = () => {
   const mainRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const orbsRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
+  const [liveStats, setLiveStats] = useState({ agents: '0', conversations: '0' });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const [agentsRes, messagesRes] = await Promise.all([
+        supabase.from('ai_profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('chat_messages').select('id', { count: 'exact', head: true }),
+      ]);
+      setLiveStats({
+        agents: formatCount(agentsRes.count ?? 0),
+        conversations: formatCount(messagesRes.count ?? 0),
+      });
+    };
+    fetchStats();
+  }, []);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -181,8 +203,8 @@ const Index = () => {
   ];
 
   const stats = [
-    { value: "10K+", label: "Active Agents" },
-    { value: "1M+", label: "Conversations" },
+    { value: liveStats.agents, label: "Active Agents" },
+    { value: liveStats.conversations, label: "Conversations" },
     { value: "99.9%", label: "Uptime" },
     { value: "<100ms", label: "Response Time" }
   ];
