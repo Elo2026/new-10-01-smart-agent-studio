@@ -79,7 +79,7 @@ export const Team: React.FC = () => {
     queryFn: async () => {
       if (!currentWorkspace) return [];
       const { data, error } = await supabase
-        .from('team_members')
+        .from('workspace_members_public')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
         .order('invited_at', { ascending: false });
