@@ -61,6 +61,54 @@ export type Database = {
           },
         ]
       }
+      agent_experience_archive: {
+        Row: {
+          agent_id: string | null
+          context_type: string
+          created_at: string
+          id: string
+          learned_patterns: Json | null
+          success_score: number
+          task_summary: string
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          learned_patterns?: Json | null
+          success_score?: number
+          task_summary: string
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          learned_patterns?: Json | null
+          success_score?: number
+          task_summary?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_experience_archive_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_experience_archive_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_memory: {
         Row: {
           access_count: number | null
@@ -295,6 +343,7 @@ export type Database = {
           active_until: string | null
           allowed_folders: string[] | null
           api_key_id: string | null
+          awareness_settings: Json | null
           chunk_priority: string[] | null
           core_model: Database["public"]["Enums"]["core_model"]
           created_at: string | null
@@ -303,6 +352,7 @@ export type Database = {
           id: string
           intro_sentence: string | null
           is_active: boolean | null
+          memory_settings: Json | null
           persona: string | null
           rag_policy: Json | null
           response_rules: Json | null
@@ -317,6 +367,7 @@ export type Database = {
           active_until?: string | null
           allowed_folders?: string[] | null
           api_key_id?: string | null
+          awareness_settings?: Json | null
           chunk_priority?: string[] | null
           core_model?: Database["public"]["Enums"]["core_model"]
           created_at?: string | null
@@ -325,6 +376,7 @@ export type Database = {
           id?: string
           intro_sentence?: string | null
           is_active?: boolean | null
+          memory_settings?: Json | null
           persona?: string | null
           rag_policy?: Json | null
           response_rules?: Json | null
@@ -339,6 +391,7 @@ export type Database = {
           active_until?: string | null
           allowed_folders?: string[] | null
           api_key_id?: string | null
+          awareness_settings?: Json | null
           chunk_priority?: string[] | null
           core_model?: Database["public"]["Enums"]["core_model"]
           created_at?: string | null
@@ -347,6 +400,7 @@ export type Database = {
           id?: string
           intro_sentence?: string | null
           is_active?: boolean | null
+          memory_settings?: Json | null
           persona?: string | null
           rag_policy?: Json | null
           response_rules?: Json | null
@@ -361,6 +415,13 @@ export type Database = {
             columns: ["api_key_id"]
             isOneToOne: false
             referencedRelation: "workspace_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_profiles_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_api_keys_safe"
             referencedColumns: ["id"]
           },
           {
@@ -406,6 +467,13 @@ export type Database = {
             columns: ["api_key_id"]
             isOneToOne: false
             referencedRelation: "workspace_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_key_access_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_api_keys_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -761,6 +829,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "marketplace_imports_marketplace_item_id_fkey"
+            columns: ["marketplace_item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "marketplace_imports_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -871,6 +946,13 @@ export type Database = {
             columns: ["marketplace_item_id"]
             isOneToOne: false
             referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_ratings_marketplace_item_id_fkey"
+            columns: ["marketplace_item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1761,6 +1843,101 @@ export type Database = {
       }
     }
     Views: {
+      marketplace_items_public: {
+        Row: {
+          agent_count: number | null
+          canvas_data: Json | null
+          category: string | null
+          config_data: Json | null
+          created_at: string | null
+          description: string | null
+          download_count: number | null
+          id: string | null
+          is_public: boolean | null
+          item_type: string | null
+          name: string | null
+          rating: number | null
+          rating_count: number | null
+          tags: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_count?: number | null
+          canvas_data?: Json | null
+          category?: string | null
+          config_data?: Json | null
+          created_at?: string | null
+          description?: string | null
+          download_count?: number | null
+          id?: string | null
+          is_public?: boolean | null
+          item_type?: string | null
+          name?: string | null
+          rating?: number | null
+          rating_count?: number | null
+          tags?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_count?: number | null
+          canvas_data?: Json | null
+          category?: string | null
+          config_data?: Json | null
+          created_at?: string | null
+          description?: string | null
+          download_count?: number | null
+          id?: string | null
+          is_public?: boolean | null
+          item_type?: string | null
+          name?: string | null
+          rating?: number | null
+          rating_count?: number | null
+          tags?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      workspace_api_keys_safe: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          display_name: string | null
+          id: string | null
+          is_active: boolean | null
+          provider: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          provider?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          provider?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_api_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members_public: {
         Row: {
           accepted_at: string | null

@@ -139,25 +139,24 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     });
 
-    // Verify JWT using getClaims for proper validation
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    
-    if (claimsError || !claimsData?.claims?.sub) {
-      console.error("Authentication failed:", claimsError?.message || "Missing sub claim");
+    // Verify JWT using getUser for consistency across all edge functions
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !userData?.user) {
+      console.error("Authentication failed:", userError?.message || "No user found");
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
     console.log(`Authenticated user: ${userId}`);
 
     const { messages, agentConfig, mode = 'assistant' } = await req.json();
-    
+
     console.log(`Chat request - Mode: ${mode}, User: ${userId}, HasAgentConfig: ${!!agentConfig}`);
-    
+
     // Validate input
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -182,14 +181,14 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       if (msg.content.length > 50000) {
         return new Response(
           JSON.stringify({ error: "Message too long (max 50,000 characters per message)" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       if (!msg.role || !['user', 'assistant', 'system'].includes(msg.role)) {
         return new Response(
           JSON.stringify({ error: "Invalid message role: must be 'user', 'assistant', or 'system'" }),
@@ -217,10 +216,38 @@ serve(async (req) => {
       console.log(`Verified access to agent: ${agentConfig.agent_id}`);
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // AI Provider Selection Logic
+    const AI_CONFIG = {
+      lovableKey: Deno.env.get("LOVABLE_API_KEY"),
+      openaiKey: Deno.env.get("OPENAI_API_KEY"),
+      groqKey: Deno.env.get("GROQ_API_KEY"),
+    };
+
+    let apiUrl = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    let apiKey = AI_CONFIG.lovableKey;
+    let model = "google/gemini-2.5-flash";
+    let providerName = "Lovable AI Gateway";
+
+    if (!apiKey && AI_CONFIG.openaiKey) {
+      apiUrl = "https://api.openai.com/v1/chat/completions";
+      apiKey = AI_CONFIG.openaiKey;
+      model = "gpt-4o-mini";
+      providerName = "OpenAI";
+    } else if (!apiKey && AI_CONFIG.groqKey) {
+      apiUrl = "https://api.groq.com/openai/v1/chat/completions";
+      apiKey = AI_CONFIG.groqKey;
+      model = "llama-3.1-70b-versatile";
+      providerName = "Groq";
+    }
+
+    if (!apiKey) {
+      console.error("No AI provider API key found");
+      return new Response(
+        JSON.stringify({
+          error: "No AI provider configured. Please set LOVABLE_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY in Supabase secrets."
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Build system prompt based on mode
@@ -229,22 +256,22 @@ serve(async (req) => {
     if (mode === 'agent' && agentConfig) {
       // AGENT MODE: Use ONLY agent configuration, NO platform context
       console.log('Building agent-only system prompt');
-      
+
       systemPrompt = agentConfig.persona || "You are a specialized AI assistant.";
-      
+
       if (agentConfig.role_description) {
         systemPrompt += `\n\nYour Role: ${agentConfig.role_description}`;
       }
-      
+
       if (agentConfig.intro_sentence) {
         systemPrompt += `\n\nWhen greeting users, use: "${agentConfig.intro_sentence}"`;
       }
-      
+
       // Apply response rules if present
       if (agentConfig.response_rules) {
         const rules = agentConfig.response_rules;
         const rulesList: string[] = [];
-        
+
         if (rules.step_by_step === true) {
           rulesList.push('Use step-by-step reasoning when explaining complex topics');
         }
@@ -263,16 +290,16 @@ serve(async (req) => {
         if (rules.summarize_at_end === true) {
           rulesList.push('Include a summary at the end of longer responses');
         }
-        
+
         if (rulesList.length > 0) {
           systemPrompt += `\n\n## RESPONSE RULES\n${rulesList.map(r => `- ${r}`).join('\n')}`;
         }
-        
+
         if (rules.custom_response_template) {
           systemPrompt += `\n\n## RESPONSE TEMPLATE\nFollow this format:\n${rules.custom_response_template}`;
         }
       }
-      
+
       // Add general guidelines for agent mode
       systemPrompt += `\n\n## GUIDELINES
 - Stay in character according to your persona
@@ -283,9 +310,9 @@ serve(async (req) => {
     } else {
       // ASSISTANT MODE (default): Platform help with APP_HELP_CONTEXT
       console.log('Building assistant system prompt with platform context');
-      
+
       systemPrompt = APP_HELP_CONTEXT;
-      
+
       // Optionally overlay agent context if provided (hybrid assistant mode)
       if (agentConfig?.persona) {
         systemPrompt += `\n\n## AGENT CONTEXT\nYou are also configured as: ${agentConfig.persona}`;
@@ -293,7 +320,7 @@ serve(async (req) => {
           systemPrompt += `\nRole: ${agentConfig.role_description}`;
         }
       }
-      
+
       systemPrompt += `\n\n## RESPONSE GUIDELINES
 - If the user asks about app features (how to create agents, workflows, etc.), provide clear step-by-step instructions
 - If the user asks domain questions, answer based on your knowledge
@@ -302,16 +329,16 @@ serve(async (req) => {
 - If unsure about something, say so honestly`;
     }
 
-    console.log(`Sending request to Lovable AI Gateway for user: ${userId}`);
+    console.log(`Sending request to ${providerName} (${model}) for user: ${userId}`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: model,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
@@ -323,7 +350,7 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      
+
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
@@ -336,9 +363,9 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       return new Response(
-        JSON.stringify({ error: "AI service error. Please try again." }),
+        JSON.stringify({ error: `AI service error (${response.status}). Please try again later.` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
