@@ -12,7 +12,7 @@ import { Dashboard } from "@/pages/Dashboard";
 import { Agents } from "@/pages/Agents";
 import { AgentConfiguration } from "@/pages/AgentConfiguration";
 import { AgentTestChat } from "@/pages/AgentTestChat";
-import { MultiAgentCanvas } from "@/pages/MultiAgentCanvas";
+import MultiAgentCanvas from "@/pages/MultiAgentCanvas";
 import { KnowledgeBase } from "@/pages/KnowledgeBase";
 import { Analytics } from "@/pages/Analytics";
 import { Settings } from "@/pages/Settings";
