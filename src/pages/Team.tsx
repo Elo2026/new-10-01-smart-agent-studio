@@ -38,10 +38,12 @@ import { formatDistanceToNow } from 'date-fns';
 
 interface TeamMember {
   id: string;
-  email: string;
+  email?: string;
+  user_id: string | null;
   role: 'owner' | 'admin' | 'editor' | 'viewer';
   invited_at: string;
   accepted_at: string | null;
+  workspace_id: string | null;
 }
 
 interface ActivityItem {
