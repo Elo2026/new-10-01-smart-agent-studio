@@ -67,7 +67,7 @@ export const WorkflowCanvas: React.FC = () => {
           ) : workflows && workflows.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {workflows.map((workflow) => (
-                <Card key={workflow.id} className="relative">
+                <Card key={workflow.id} className="relative cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate(`/workflow-canvas/${workflow.id}`)}>
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
                       <div>
