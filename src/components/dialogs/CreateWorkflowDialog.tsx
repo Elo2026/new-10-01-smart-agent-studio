@@ -12,12 +12,14 @@ interface CreateWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  onCreated?: (id: string) => void;
 }
 
 export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
   open,
   onOpenChange,
   onSuccess,
+  onCreated,
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -43,14 +45,14 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
         return;
       }
 
-      const { error } = await supabase.from('agent_workflows').insert({
+      const { data, error } = await supabase.from('agent_workflows').insert({
         name: formData.name.trim(),
         description: formData.description || null,
         execution_mode: formData.execution_mode,
         canvas_data: { nodes: [], edges: [] },
         handoff_rules: [],
         created_by: user.id,
-      });
+      }).select('id').single();
 
       if (error) throw error;
 
@@ -58,6 +60,7 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
       setFormData({ name: '', description: '', execution_mode: 'sequential' });
       onSuccess();
       onOpenChange(false);
+      if (data?.id && onCreated) onCreated(data.id);
     } catch (error: unknown) {
       toast({
         title: 'Error',
