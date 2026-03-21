@@ -19,6 +19,7 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
   open,
   onOpenChange,
   onSuccess,
+  onCreated,
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
