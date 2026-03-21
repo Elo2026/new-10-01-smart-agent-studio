@@ -23,12 +23,16 @@ export const WorkflowCanvas: React.FC = () => {
   const [selectedWorkflow, setSelectedWorkflow] = useState<{ id: string; name: string } | null>(null);
 
   const { data: workflows, isLoading } = useQuery({
-    queryKey: ['workflows'],
+    queryKey: ['workflows', currentWorkspace?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('agent_workflows')
         .select('*')
         .order('created_at', { ascending: false });
+      if (currentWorkspace?.id) {
+        query = query.eq('workspace_id', currentWorkspace.id);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
