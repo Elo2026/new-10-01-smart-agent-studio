@@ -16,7 +16,8 @@ import {
   LogOut,
   Moon,
   Sun,
-  Languages
+  Languages,
+  GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/contexts/AppContext';
