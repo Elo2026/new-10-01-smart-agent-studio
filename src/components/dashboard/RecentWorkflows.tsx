@@ -131,7 +131,15 @@ export const RecentWorkflows: React.FC = () => {
                     <StatusIcon className={`h-4 w-4 ${config.color} ${run.status === 'running' ? 'animate-spin' : ''}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{workflowName}</p>
+                    <p className="font-medium text-sm truncate">
+                      {run.workflow_id ? (
+                        <Link to={`/multi-agent-canvas/${run.workflow_id}`} className="hover:underline hover:text-primary transition-colors">
+                          {workflowName}
+                        </Link>
+                      ) : (
+                        workflowName
+                      )}
+                    </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <Badge variant="secondary" className="text-xs capitalize">
                         {run.status}

@@ -19,7 +19,8 @@ import {
   Loader2,
   Activity,
   Terminal,
-  Zap
+  Zap,
+  Settings
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -176,12 +177,18 @@ export const WorkflowMonitor: React.FC = () => {
             </p>
           </div>
         </div>
-        {run.status === 'running' && (
-          <div className="flex items-center gap-2 text-blue-500">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="font-medium">Live Monitoring</span>
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          {run.status === 'running' && (
+            <div className="flex items-center gap-2 text-blue-500">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="font-medium">Live Monitoring</span>
+            </div>
+          )}
+          <Button variant="outline" onClick={() => navigate(`/multi-agent-canvas/${run.workflow_id}`)}>
+            <Settings className="h-4 w-4 mr-2" />
+            Edit Workflow
+          </Button>
+        </div>
       </div>
 
       {/* Progress */}
