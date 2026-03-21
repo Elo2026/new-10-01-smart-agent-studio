@@ -45,14 +45,14 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
         return;
       }
 
-      const { error } = await supabase.from('agent_workflows').insert({
+      const { data, error } = await supabase.from('agent_workflows').insert({
         name: formData.name.trim(),
         description: formData.description || null,
         execution_mode: formData.execution_mode,
         canvas_data: { nodes: [], edges: [] },
         handoff_rules: [],
         created_by: user.id,
-      });
+      }).select('id').single();
 
       if (error) throw error;
 
