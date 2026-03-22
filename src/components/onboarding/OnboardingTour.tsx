@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import Joyride, { Step, CallBackProps, STATUS } from 'react-joyride';
+import Joyride, { STATUS } from 'react-joyride';
+import type { Step, CallBackProps } from 'react-joyride';
 import { useApp } from '@/contexts/AppContext';
 
 export const OnboardingTour: React.FC = () => {

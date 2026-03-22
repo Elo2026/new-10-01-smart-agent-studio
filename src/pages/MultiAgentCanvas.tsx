@@ -340,18 +340,41 @@ const MultiAgentCanvas: React.FC = () => {
   }, [configId]);
 
   useEffect(() => {
-    if (existingConfig) {
+    if (existingConfig && agents) {
       setConfigName(existingConfig.name);
       setConfigDescription(existingConfig.description || '');
       const canvasData = existingConfig.canvas_data as { nodes?: Node[]; edges?: Edge[] } | null;
+      
       if (canvasData?.nodes) {
-        setNodes(canvasData.nodes);
+        // Synchronize node data with latest agent profiles
+        const synchronizedNodes = canvasData.nodes.map(node => {
+          if (node.type === 'agent' && node.data?.agentId) {
+            const latestAgent = agents.find(a => a.id === node.data.agentId);
+            if (latestAgent) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: latestAgent.display_name,
+                  model: latestAgent.core_model,
+                  role: latestAgent.role_description,
+                  memoryEnabled: !!(latestAgent.memory_settings as any)?.short_term_enabled || !!(latestAgent.memory_settings as any)?.long_term_enabled,
+                  awarenessEnabled: !!(latestAgent.awareness_settings as any)?.self_role_enabled || !!(latestAgent.awareness_settings as any)?.proactive_reasoning,
+                  awarenessLevel: (latestAgent.awareness_settings as any)?.awareness_level || 2,
+                }
+              };
+            }
+          }
+          return node;
+        });
+        setNodes(synchronizedNodes);
       }
+      
       if (canvasData?.edges) {
         setEdges(canvasData.edges);
       }
     }
-  }, [existingConfig]);
+  }, [existingConfig, agents]);
 
   useEffect(() => {
     if (!configId && showEditor) {

@@ -53,6 +53,7 @@ interface AgentTestChatDialogProps {
   reworkSettings: ReworkSettings;
   workspaceId: string | null;
   isCompatible: boolean;
+  onSave?: () => Promise<void>;
 }
 
 const SAMPLE_PROMPTS = [
@@ -67,10 +68,12 @@ export const AgentTestChatDialog: React.FC<AgentTestChatDialogProps> = ({
   formData,
   reworkSettings,
   workspaceId,
-  isCompatible
+  isCompatible,
+  onSave
 }) => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -249,6 +252,24 @@ export const AgentTestChatDialog: React.FC<AgentTestChatDialogProps> = ({
     }
   };
 
+  const handleSave = async () => {
+    if (!onSave) return;
+    setIsSaving(true);
+    try {
+      await onSave();
+      toast({ title: 'Success', description: 'Agent configuration saved' });
+    } catch (error) {
+      console.error('Save error:', error);
+      toast({ 
+        title: 'Error', 
+        description: 'Failed to save configuration', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleStop = () => {
     abortControllerRef.current?.abort();
     setIsLoading(false);
@@ -327,6 +348,17 @@ export const AgentTestChatDialog: React.FC<AgentTestChatDialogProps> = ({
               >
                 Compatibility: {compatibility.score}%
               </Badge>
+              {onSave && (
+                <Button 
+                  size="sm" 
+                  className="gap-2" 
+                  onClick={handleSave} 
+                  disabled={isSaving}
+                >
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Save & Apply
+                </Button>
+              )}
             </div>
           </DialogTitle>
         </DialogHeader>
