@@ -232,17 +232,24 @@ serve(async (req) => {
 
         // Check for Knowledge Base access and perform retrieval if folders are allowed
         let retrievedContext = "";
-        const allowedFolders = agent.allowed_folders || [];
+        
+        // Prioritize folders configured in the node (canvas), fallback to agent's default allowed_folders
+        const nodeFolders = node.inputs?.fromKnowledgeBase || [];
+        const agentFolders = agent.allowed_folders || [];
+        const allowedFolders = nodeFolders.length > 0 ? nodeFolders : agentFolders;
         
         if (allowedFolders.length > 0) {
           executionLogs.push({
             timestamp: new Date().toISOString(),
             type: "info",
             agent: agentName,
-            message: `Searching Knowledge Base (folders: ${allowedFolders.length})`,
+            message: `Searching Knowledge Base (folders selected: ${allowedFolders.length})`,
           });
 
           try {
+            // Use the same prompt as the user query for retrieval
+            const ragQuery = inputData?.prompt || "Information about your role and tasks";
+            
             const ragResponse = await fetch(`${supabaseUrl}/functions/v1/rag-retrieve`, {
               method: "POST",
               headers: {
@@ -250,7 +257,7 @@ serve(async (req) => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                query: inputData?.prompt || "Information about your role and tasks",
+                query: ragQuery,
                 config: {
                   folder_ids: allowedFolders,
                   top_k: 5

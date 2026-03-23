@@ -223,6 +223,7 @@ const MultiAgentCanvas: React.FC = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [showEditor, setShowEditor] = useState(!!configId);
+  const initialLoadDone = useRef(false);
 
   const { printCanvas } = usePrintCanvas();
 
@@ -339,14 +340,15 @@ const MultiAgentCanvas: React.FC = () => {
     }
   }, [configId]);
 
+  // Handle initial configuration load
   useEffect(() => {
-    if (existingConfig && agents) {
+    if (existingConfig && agents && !initialLoadDone.current) {
       setConfigName(existingConfig.name);
       setConfigDescription(existingConfig.description || '');
       const canvasData = existingConfig.canvas_data as { nodes?: Node[]; edges?: Edge[] } | null;
       
       if (canvasData?.nodes) {
-        // Synchronize node data with latest agent profiles
+        // Initial synchronization of node data with latest agent profiles
         const synchronizedNodes = canvasData.nodes.map(node => {
           if (node.type === 'agent' && node.data?.agentId) {
             const latestAgent = agents.find(a => a.id === node.data.agentId);
@@ -373,8 +375,41 @@ const MultiAgentCanvas: React.FC = () => {
       if (canvasData?.edges) {
         setEdges(canvasData.edges);
       }
+      
+      initialLoadDone.current = true;
     }
   }, [existingConfig, agents]);
+
+  // Handle synchronization of current nodes when agent profiles change
+  useEffect(() => {
+    if (agents && initialLoadDone.current) {
+      setNodes((currentNodes) => 
+        currentNodes.map(node => {
+          if (node.type === 'agent' && node.data?.agentId) {
+            const latestAgent = agents.find(a => a.id === node.data.agentId);
+            if (latestAgent) {
+              // Only update if something meaningful changed to avoid unnecessary re-renders
+              const newData = {
+                ...node.data,
+                label: latestAgent.display_name,
+                model: latestAgent.core_model,
+                role: latestAgent.role_description,
+                memoryEnabled: !!(latestAgent.memory_settings as any)?.short_term_enabled || !!(latestAgent.memory_settings as any)?.long_term_enabled,
+                awarenessEnabled: !!(latestAgent.awareness_settings as any)?.self_role_enabled || !!(latestAgent.awareness_settings as any)?.proactive_reasoning,
+                awarenessLevel: (latestAgent.awareness_settings as any)?.awareness_level || 2,
+              };
+              
+              const hasChanged = JSON.stringify(node.data) !== JSON.stringify(newData);
+              if (hasChanged) {
+                return { ...node, data: newData };
+              }
+            }
+          }
+          return node;
+        })
+      );
+    }
+  }, [agents]);
 
   useEffect(() => {
     if (!configId && showEditor) {
