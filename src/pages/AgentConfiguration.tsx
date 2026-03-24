@@ -338,8 +338,6 @@ export const AgentConfiguration: React.FC = () => {
         active_days: formData.active_days,
         rag_policy: formData.rag_policy as unknown,
         response_rules: formData.response_rules as unknown,
-        rag_policy: formData.rag_policy as unknown,
-        response_rules: formData.response_rules as unknown,
         memory_settings: formData.memory_settings as unknown,
         awareness_settings: formData.awareness_settings as unknown,
       };
