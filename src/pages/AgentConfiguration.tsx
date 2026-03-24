@@ -338,7 +338,8 @@ export const AgentConfiguration: React.FC = () => {
         active_days: formData.active_days,
         rag_policy: formData.rag_policy as unknown,
         response_rules: formData.response_rules as unknown,
-        agent_tasks: formData.agent_tasks as unknown,
+        rag_policy: formData.rag_policy as unknown,
+        response_rules: formData.response_rules as unknown,
         memory_settings: formData.memory_settings as unknown,
         awareness_settings: formData.awareness_settings as unknown,
       };
@@ -350,20 +351,27 @@ export const AgentConfiguration: React.FC = () => {
           workspace_id: currentWorkspace?.id || null,
         };
         const { error } = await supabase.from('ai_profiles').insert(insertPayload as never);
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase insert error:', error);
+          throw error;
+        }
         toast({ title: 'Success', description: 'Agent created successfully' });
       } else {
         const { error } = await supabase.from('ai_profiles').update(payload).eq('id', id);
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase update error:', error);
+          throw error;
+        }
         toast({ title: 'Success', description: 'Agent updated successfully' });
       }
 
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/agents');
-    } catch (error: unknown) {
+    } catch (error: any) {
+      console.error('Submit error:', error);
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to save agent',
+        description: error.message || (typeof error === 'string' ? error : 'Failed to save agent'),
         variant: 'destructive'
       });
     } finally {
@@ -455,6 +463,7 @@ export const AgentConfiguration: React.FC = () => {
             reworkSettings={formData.rework_settings}
             workspaceId={currentWorkspace?.id || null}
             isCompatible={true}
+            onSave={handleSubmit}
           />
           <Button variant="outline" onClick={handleExport} className="gap-2">
             <Download className="h-4 w-4" />

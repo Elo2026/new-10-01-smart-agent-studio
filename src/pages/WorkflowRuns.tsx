@@ -298,6 +298,20 @@ export const WorkflowRuns: React.FC = () => {
                             <Badge variant="outline" className={status.color}>
                               {status.label}
                             </Badge>
+                            {run.workflow_id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/multi-agent-canvas/${run.workflow_id}`);
+                                }}
+                              >
+                                <GitBranch className="h-4 w-4 mr-1" />
+                                Edit Workflow
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

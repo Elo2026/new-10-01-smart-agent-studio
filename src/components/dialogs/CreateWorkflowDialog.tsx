@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +25,7 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
   onCreated,
 }) => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { currentWorkspace } = useWorkspace();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -47,13 +50,21 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
         return;
       }
 
+      if (!currentWorkspace) {
+        toast({ title: 'Error', description: 'No active workspace found', variant: 'destructive' });
+        return;
+      }
+
+      const { data, error } = await supabase.from('multi_agent_configs').insert({
       const { data, error } = await supabase.from('agent_workflows').insert({
         name: formData.name.trim(),
         description: formData.description || null,
-        execution_mode: formData.execution_mode,
+        workspace_id: currentWorkspace.id,
         canvas_data: { nodes: [], edges: [] },
-        handoff_rules: [],
+        agent_nodes: [],
+        connections: [],
         created_by: user.id,
+      }).select().single();
         workspace_id: currentWorkspace?.id || null,
       }).select('id').single();
 
@@ -63,6 +74,9 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
       setFormData({ name: '', description: '', execution_mode: 'sequential' });
       onSuccess();
       onOpenChange(false);
+      if (data?.id) {
+        navigate(`/multi-agent-canvas/${data.id}`);
+      }
       if (data?.id && onCreated) onCreated(data.id);
     } catch (error: unknown) {
       toast({

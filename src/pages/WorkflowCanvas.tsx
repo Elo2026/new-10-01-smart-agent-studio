@@ -4,7 +4,8 @@ import { useApp } from '@/contexts/AppContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, GitBranch, Trash2, Play, Clock } from 'lucide-react';
+import { Plus, GitBranch, Trash2, Play, Clock, Layout } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { CreateWorkflowDialog } from '@/components/dialogs/CreateWorkflowDialog';
@@ -17,12 +18,17 @@ export const WorkflowCanvas: React.FC = () => {
   const navigate = useNavigate();
   const { currentWorkspace } = useWorkspace();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<{ id: string; name: string } | null>(null);
 
   const { data: workflows, isLoading } = useQuery({
+    queryKey: ['multi-agent-configs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('multi_agent_configs')
     queryKey: ['workflows', currentWorkspace?.id],
     queryFn: async () => {
       let query = supabase
@@ -39,7 +45,7 @@ export const WorkflowCanvas: React.FC = () => {
   });
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('agent_workflows').delete().eq('id', id);
+    const { error } = await supabase.from('multi_agent_configs').delete().eq('id', id);
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
     }
@@ -77,7 +83,7 @@ export const WorkflowCanvas: React.FC = () => {
                       <div>
                         <h3 className="font-semibold">{workflow.name}</h3>
                         <Badge variant="outline" className="mt-2">
-                          {workflow.execution_mode === 'sequential' ? t.workflowCanvas.sequential : t.workflowCanvas.parallel}
+                          {t.workflowCanvas.title}
                         </Badge>
                       </div>
                       <div className="flex gap-1">
@@ -93,6 +99,16 @@ export const WorkflowCanvas: React.FC = () => {
                         >
                           <Clock className="h-4 w-4" />
                         </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          onClick={() => navigate(`/multi-agent-canvas/${workflow.id}`)}
+                          title="Open in Canvas"
+                        >
+                          <Layout className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
                           <Play className="h-4 w-4" />
                         </Button>
@@ -129,6 +145,7 @@ export const WorkflowCanvas: React.FC = () => {
       <CreateWorkflowDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['multi-agent-configs'] })}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workflows'] })}
         onCreated={(id) => navigate(`/workflow-canvas/${id}`)}
       />

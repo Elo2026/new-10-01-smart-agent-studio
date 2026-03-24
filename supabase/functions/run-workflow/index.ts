@@ -230,6 +230,74 @@ serve(async (req) => {
           }
         }
 
+        // Check for Knowledge Base access and perform retrieval if folders are allowed
+        let retrievedContext = "";
+        
+        // Prioritize folders configured in the node (canvas), fallback to agent's default allowed_folders
+        const nodeFolders = node.inputs?.fromKnowledgeBase || [];
+        const agentFolders = agent.allowed_folders || [];
+        const allowedFolders = nodeFolders.length > 0 ? nodeFolders : agentFolders;
+        
+        if (allowedFolders.length > 0) {
+          executionLogs.push({
+            timestamp: new Date().toISOString(),
+            type: "info",
+            agent: agentName,
+            message: `Searching Knowledge Base (folders selected: ${allowedFolders.length})`,
+          });
+
+          try {
+            // Use the same prompt as the user query for retrieval
+            const ragQuery = inputData?.prompt || "Information about your role and tasks";
+            
+            const ragResponse = await fetch(`${supabaseUrl}/functions/v1/rag-retrieve`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                query: ragQuery,
+                config: {
+                  folder_ids: allowedFolders,
+                  top_k: 5
+                }
+              }),
+            });
+
+            if (ragResponse.ok) {
+              const ragData = await ragResponse.json();
+              const chunks = ragData.chunks || [];
+              if (chunks.length > 0) {
+                retrievedContext = "\n\n### RELEVANT KNOWLEDGE BASE CONTEXT:\n" + 
+                  chunks.map((c: any, i: number) => `[Source ${i+1}: ${c.source_file}]\n${c.content}`).join("\n\n");
+                
+                executionLogs.push({
+                  timestamp: new Date().toISOString(),
+                  type: "info",
+                  agent: agentName,
+                  message: `Retrieved ${chunks.length} relevant context chunks`,
+                });
+              } else {
+                executionLogs.push({
+                  timestamp: new Date().toISOString(),
+                  type: "info",
+                  agent: agentName,
+                  message: "No relevant information found in Knowledge Base",
+                });
+              }
+            }
+          } catch (ragError) {
+            console.error("RAG retrieval failed:", ragError);
+            executionLogs.push({
+              timestamp: new Date().toISOString(),
+              type: "warning",
+              agent: agentName,
+              message: "Knowledge Base retrieval failed, proceeding without context",
+            });
+          }
+        }
+
         // Call AI to execute agent task
         const { apiUrl, apiKey, model: aiModel } = getAIConfig();
         if (!apiKey) {
@@ -249,6 +317,11 @@ serve(async (req) => {
         let systemPrompt = agent.persona || "You are a helpful assistant.";
         if (agent.role_description) {
           systemPrompt += `\n\nRole: ${agent.role_description}`;
+        }
+        
+        // Add retrieved context to system prompt if available
+        if (retrievedContext) {
+          systemPrompt += retrievedContext;
         }
 
         const response = await fetch(apiUrl!, {
