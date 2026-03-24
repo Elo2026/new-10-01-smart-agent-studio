@@ -1365,6 +1365,7 @@ export type Database = {
           id: string
           original_query: string
           query_intent: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1376,6 +1377,7 @@ export type Database = {
           id?: string
           original_query: string
           query_intent?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1387,6 +1389,7 @@ export type Database = {
           id?: string
           original_query?: string
           query_intent?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1941,30 +1944,24 @@ export type Database = {
       workspace_members_public: {
         Row: {
           accepted_at: string | null
-          email: string | null
           id: string | null
           invited_at: string | null
-          invited_by: string | null
           role: string | null
           user_id: string | null
           workspace_id: string | null
         }
         Insert: {
           accepted_at?: string | null
-          email?: never
           id?: string | null
           invited_at?: string | null
-          invited_by?: string | null
           role?: string | null
           user_id?: string | null
           workspace_id?: string | null
         }
         Update: {
           accepted_at?: string | null
-          email?: never
           id?: string | null
           invited_at?: string | null
-          invited_by?: string | null
           role?: string | null
           user_id?: string | null
           workspace_id?: string | null
