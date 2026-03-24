@@ -9,7 +9,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 interface CreateWorkflowDialogProps {
   open: boolean;
@@ -43,7 +42,6 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
 
     setLoading(true);
     try {
-      // Get current user ID for created_by field (required by RLS policy)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast({ title: 'Error', description: 'You must be logged in', variant: 'destructive' });
@@ -55,17 +53,13 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
         return;
       }
 
-      const { data, error } = await supabase.from('multi_agent_configs').insert({
       const { data, error } = await supabase.from('agent_workflows').insert({
         name: formData.name.trim(),
         description: formData.description || null,
+        execution_mode: formData.execution_mode,
         workspace_id: currentWorkspace.id,
         canvas_data: { nodes: [], edges: [] },
-        agent_nodes: [],
-        connections: [],
         created_by: user.id,
-      }).select().single();
-        workspace_id: currentWorkspace?.id || null,
       }).select('id').single();
 
       if (error) throw error;
@@ -74,10 +68,11 @@ export const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({
       setFormData({ name: '', description: '', execution_mode: 'sequential' });
       onSuccess();
       onOpenChange(false);
-      if (data?.id) {
-        navigate(`/multi-agent-canvas/${data.id}`);
+      if (data?.id && onCreated) {
+        onCreated(data.id);
+      } else if (data?.id) {
+        navigate(`/workflow-canvas/${data.id}`);
       }
-      if (data?.id && onCreated) onCreated(data.id);
     } catch (error: unknown) {
       toast({
         title: 'Error',
